@@ -40,7 +40,7 @@
   .viewer{position:relative;overflow:auto;flex:1;border-top:1px solid #222}
   .content{font-size:var(--fontSize);line-height:1.2; padding:calc(var(--padTBvh)*1vh) calc(var(--padLRvw)*1vw); white-space:pre-wrap;word-break:break-word}
   .guide{position:absolute;left:0;right:0;height:2px;background:#f44336;top:var(--guideY);opacity:.8;pointer-events:none}
-  .kbd{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;background:#111;border:1px solid #333;border-radius:6px;padding:2px 6px}
+  .kbd{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;background:#111;border:1px solid #333;border-radius:6px;padding:2px 6px}
 
   /* Prompter-only transforms */
   .mirrorX{transform:scaleX(-1)}
@@ -48,18 +48,6 @@
 
   /* Make arrow keys scroll only the viewer */
   .viewer:focus{outline:2px solid #2a7fff}
-
-  /* Load dialog */
-  dialog#loadDialog{
-    border:1px solid #333;background:#0f0f0f;color:#fff;border-radius:16px;padding:0;max-width:640px;width:90%;
-  }
-  .dlg-head{padding:14px 16px;border-bottom:1px solid #222;display:flex;align-items:center;justify-content:space-between}
-  .dlg-body{padding:10px 16px;max-height:60vh;overflow:auto}
-  .dlg-foot{padding:12px 16px;border-top:1px solid #222;display:flex;justify-content:flex-end}
-  .saved-item{display:grid;grid-template-columns:1fr auto;gap:6px 12px;align-items:center;border:1px solid #222;border-radius:12px;padding:10px;margin:8px 0;background:#0b0b0b}
-  .saved-title{font-weight:600}
-  .saved-meta{font-size:12px;opacity:.8}
-  .saved-actions{display:flex;gap:8px}
 </style>
 </head>
 <body>
@@ -97,12 +85,7 @@
       <label>Script</label>
       <textarea id="script" placeholder="Type or paste your script here..."></textarea>
       <div style="display:flex;gap:12px;align-items:center;justify-content:space-between;margin-top:6px">
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button id="applyScript">Load to Preview & Prompter</button>
-          <!-- NEW: Save / Load -->
-          <button id="saveScript" title="Save script to Firebase">Save</button>
-          <button id="loadScript" title="Load a saved script">Load</button>
-        </div>
+        <button id="applyScript">Load to Preview & Prompter</button>
         <span id="status" class="muted">–</span>
       </div>
     </div>
@@ -114,22 +97,7 @@
     <div class="content" id="content"></div>
   </div>
 
-  <!-- Load dialog -->
-  <dialog id="loadDialog">
-    <div class="dlg-head">
-      <strong>Saved Scripts</strong>
-      <button id="closeDialog">Close</button>
-    </div>
-    <div class="dlg-body">
-      <div id="savedList" class="saved-list"></div>
-    </div>
-    <div class="dlg-foot">
-      <span class="muted">Click “Load” to replace the current script.</span>
-    </div>
-  </dialog>
-
 <script>
-/* ===== Existing teleprompter logic (unchanged) ===== */
 (function(){
   // --- State ---
   const state = {
@@ -320,7 +288,7 @@
     status.textContent = 'Opening prompter…';
     if (prompterWin && !prompterWin.closed){ try{prompterWin.close();}catch{}}
     prompterWin = window.open('', 'TeleprompterWindow', 'popup=yes,width=1200,height=800');
-    if(!prompterWin){ alert('Pop-up blocked. Please allow pop-ups for this site.'); status.textContent='Popup blocked.'; return; }
+    if(!prompterWin){ alert('Pop‑up blocked. Please allow pop‑ups for this site.'); status.textContent='Popup blocked.'; return; }
 
     // write a full, closed document to avoid partial-write errors
     prompterWin.document.open();
@@ -405,142 +373,6 @@ Press Space to toggle autoscroll. Use ↑/↓ to nudge.`;
   render();
   manageAuto();
 })();
-</script>
-
-<!-- ===== NEW: Firebase-powered Save/Load (isolated in its own module) ===== -->
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
-  import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js";
-  import {
-    getFirestore, collection, addDoc, getDocs, getDoc, doc, deleteDoc,
-    serverTimestamp, query, orderBy
-  } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
-
-  // --- Your Firebase config ---
-  const firebaseConfig = {
-    apiKey: "AIzaSyALVu4YBscEBpIGn0N__x6HdT4yHbWbi3Q",
-    authDomain: "teleprompter-1234b.firebaseapp.com",
-    projectId: "teleprompter-1234b",
-    storageBucket: "teleprompter-1234b.firebasestorage.app",
-    messagingSenderId: "63079515130",
-    appId: "1:63079515130:web:13d51e6f8aa62c4c0ada43"
-  };
-
-  // --- Init Firebase ---
-  const app = initializeApp(firebaseConfig);
-  const auth = getAuth(app);
-  const db   = getFirestore(app);
-
-  // Sign in anonymously so rules can target a user
-  await signInAnonymously(auth).catch(console.error);
-  let uid = null;
-  onAuthStateChanged(auth, (user)=>{ uid = user?.uid || null; });
-
-  // --- DOM hooks ---
-  const saveBtn   = document.getElementById('saveScript');
-  const loadBtn   = document.getElementById('loadScript');
-  const applyBtn  = document.getElementById('applyScript');
-  const scriptBox = document.getElementById('script');
-  const statusEl  = document.getElementById('status');
-  const dlg       = document.getElementById('loadDialog');
-  const listEl    = document.getElementById('savedList');
-  const closeDlg  = document.getElementById('closeDialog');
-
-  function setStatus(msg){ statusEl.textContent = msg; }
-
-  // Save current textarea to Firestore
-  async function doSave(){
-    const text = scriptBox.value || '';
-    const name = prompt('Enter a name for this script:');
-    if (!name) return;
-
-    try{
-      await addDoc(collection(db, 'scripts'), {
-        name, text,
-        owner: uid || null,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
-      setStatus(`Saved “${name}”.`);
-    }catch(err){
-      console.error(err);
-      alert('Save failed. See console for details.');
-    }
-  }
-
-  // Show list of saved scripts
-  async function showList(){
-    dlg.showModal();
-    listEl.innerHTML = '<div class="muted">Loading…</div>';
-    try{
-      const q = query(collection(db,'scripts'), orderBy('updatedAt','desc'));
-      const snap = await getDocs(q);
-      if (snap.empty){
-        listEl.innerHTML = '<div class="muted">No saved scripts yet.</div>';
-        return;
-      }
-      listEl.innerHTML = '';
-      snap.forEach(docSnap=>{
-        const d = docSnap.data();
-        const div = document.createElement('div');
-        div.className = 'saved-item';
-        const when = d.updatedAt?.toDate ? d.updatedAt.toDate().toLocaleString() : '';
-        div.innerHTML = `
-          <div>
-            <div class="saved-title">${d.name || '(untitled)'}</div>
-            <div class="saved-meta">${when}</div>
-          </div>
-          <div class="saved-actions">
-            <button data-id="${docSnap.id}" class="load">Load</button>
-            <button data-id="${docSnap.id}" class="delete">Delete</button>
-          </div>
-        `;
-        listEl.appendChild(div);
-      });
-    }catch(err){
-      console.error(err);
-      listEl.innerHTML = '<div class="muted">Failed to load list.</div>';
-    }
-  }
-
-  // Load or Delete click handling
-  listEl.addEventListener('click', async (e)=>{
-    const id = e.target?.dataset?.id;
-    if(!id) return;
-
-    if(e.target.classList.contains('load')){
-      try{
-        const d = await getDoc(doc(db,'scripts',id));
-        if (d.exists()){
-          const data = d.data();
-          scriptBox.value = data.text || '';
-          // Apply to preview + prompter
-          applyBtn.click();
-          setStatus(`Loaded “${data.name || '(untitled)'}”.`);
-          dlg.close();
-        }
-      }catch(err){
-        console.error(err);
-        alert('Load failed.');
-      }
-    }
-
-    if(e.target.classList.contains('delete')){
-      if(!confirm('Delete this saved script?')) return;
-      try{
-        await deleteDoc(doc(db,'scripts',id));
-        showList(); // refresh list
-      }catch(err){
-        console.error(err);
-        alert('Delete failed.');
-      }
-    }
-  });
-
-  // Wire buttons
-  saveBtn.addEventListener('click', doSave);
-  loadBtn.addEventListener('click', showList);
-  closeDlg.addEventListener('click', ()=>dlg.close());
 </script>
 </body>
 </html>
