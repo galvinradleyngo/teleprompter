@@ -1,14 +1,15 @@
-<!DOCTYPE html>
+# Create the patched index.html file with Firebase Save/Load support
+html = r"""<!DOCTYPE html>
 <html lang="en">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Teleprompter — Operator & Prompter (Top Toolbar)</title>
+<title>Teleprompter — Operator & Prompter (Save/Load + Top Toolbar)</title>
 <style>
   :root{
     --fontSize: 64px;      /* px */
     --padLRvw: 8;          /* vw */
-    --padTBvh: 0;          /* vh — top/bottom kept 0 as requested */
+    --padTBvh: 0;          /* vh */
     --guideY: 35%;         /* % from top */
   }
   *{box-sizing:border-box}
@@ -99,9 +100,7 @@
       <div style="display:flex;gap:12px;align-items:center;justify-content:space-between;margin-top:6px">
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button id="applyScript">Load to Preview & Prompter</button>
-          <button id="saveScript" title="Save script to Firebase">Save</button>
-<button id="loadScript" title="Load a saved script">Load</button>
-          <!-- NEW: Save / Load -->
+          <!-- Save / Load Buttons -->
           <button id="saveScript" title="Save script to Firebase">Save</button>
           <button id="loadScript" title="Load a saved script">Load</button>
         </div>
@@ -129,10 +128,9 @@
       <span class="muted">Click “Load” to replace the current script.</span>
     </div>
   </dialog>
-  
 
 <script>
-/* ===== Existing teleprompter logic (unchanged) ===== */
+/* ===== Teleprompter logic ===== */
 (function(){
   // --- State ---
   const state = {
@@ -176,7 +174,7 @@
   let autosTimer = null;  // operator-side autoscroll
   let isRemoteScroll = false; // prevents feedback loops
 
-  // --- Operator-side autoscroll (runs only when prompter is NOT open) ---
+  // --- Operator-side autoscroll (runs when prompter is NOT open) ---
   function stopOpAuto(){ if(autosTimer){ cancelAnimationFrame(autosTimer); autosTimer=null; } }
   function stepOp(){
     const sp = state.speed || 0;
@@ -185,7 +183,6 @@
       const dt = (t - last) / 1000; last = t;
       viewer.scrollTop += sp * dt;
       state.scrollTop = viewer.scrollTop;
-      // broadcast to prompter so it follows when open
       send({type:'scroll', scrollTop: state.scrollTop});
       autosTimer = requestAnimationFrame(tick);
     }
@@ -194,12 +191,11 @@
   function manageAuto(){
     stopOpAuto();
     if(state.autoscroll){
-      // If no prompter, operator drives autoscroll; if prompter exists, child drives
       if(!prompterWin || prompterWin.closed){ stepOp(); }
     }
   }
 
-  // --- Rendering: Operator preview must match Prompter except flipping ---
+  // --- Rendering ---
   function render(){
     content.textContent = state.text || '';
     document.documentElement.style.setProperty('--fontSize', state.fontSize + 'px');
@@ -208,7 +204,7 @@
     document.documentElement.style.setProperty('--guideY', state.guidePos + '%');
     guide.style.display = state.guideVisible ? 'block' : 'none';
 
-    // Ensure operator view is never flipped
+    // operator is never flipped
     content.classList.remove('mirrorX','flipY');
 
     // Scroll position from state
@@ -287,7 +283,6 @@
     function tick(t){
       const dt = (t-last)/1000; last=t;
       viewer.scrollTop += sp*dt;
-      // tell parent so operator preview stays in sync
       window.parent && window.parent.postMessage({type:'scroll', scrollTop: viewer.scrollTop}, '*');
       autosTimer = requestAnimationFrame(tick);
     }
@@ -311,143 +306,9 @@
     window.parent && window.parent.postMessage({type:'scroll', scrollTop:state.scrollTop}, '*');
   }, {passive:true});
 
-  // initial ready signal
   window.parent && window.parent.postMessage({type:'ready'}, '*');
 })();
 <\/script>
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
-  import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js";
-  import {
-    getFirestore, collection, addDoc, getDocs, getDoc, doc, deleteDoc,
-    serverTimestamp, query, orderBy
-  } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
-
-  // Your config
-  const firebaseConfig = {
-    apiKey: "AIzaSyALVu4YBscEBpIGn0N__x6HdT4yHbWbi3Q",
-    authDomain: "teleprompter-1234b.firebaseapp.com",
-    projectId: "teleprompter-1234b",
-    storageBucket: "teleprompter-1234b.firebasestorage.app",
-    messagingSenderId: "63079515130",
-    appId: "1:63079515130:web:13d51e6f8aa62c4c0ada43"
-  };
-
-  const app = initializeApp(firebaseConfig);
-  const auth = getAuth(app);
-  const db   = getFirestore(app);
-
-  // Sign in (anonymous)
-  await signInAnonymously(auth).catch(console.error);
-  let uid = null;
-  onAuthStateChanged(auth, (u)=>{ uid = u?.uid || null; });
-
-  // DOM
-  const saveBtn   = document.getElementById('saveScript');
-  const loadBtn   = document.getElementById('loadScript');
-  const applyBtn  = document.getElementById('applyScript');
-  const scriptBox = document.getElementById('script');   // your existing textarea
-  const dlg       = document.getElementById('loadDialog');
-  const listEl    = document.getElementById('savedList');
-  const closeDlg  = document.getElementById('closeDialog');
-  const statusEl  = document.getElementById('status');   // optional status span
-  const setStatus = (m)=>{ if(statusEl) statusEl.textContent = m; };
-
-  // Save current script
-  async function doSave(){
-    const text = scriptBox?.value || '';
-    const name = prompt('Enter a name for this script:');
-    if (!name) return;
-    try{
-      await addDoc(collection(db, 'scripts'), {
-        name, text,
-        owner: uid || null,
-        createdAt: serverTimestamp(),
-        updatedAt: serverTimestamp()
-      });
-      setStatus?.(`Saved “${name}”.`);
-    }catch(err){
-      console.error(err);
-      alert('Save failed. See console for details.');
-    }
-  }
-
-  // Show saved list
-  async function showList(){
-    dlg.showModal();
-    listEl.innerHTML = '<div style="opacity:.75">Loading…</div>';
-    try{
-      const q = query(collection(db,'scripts'), orderBy('updatedAt','desc'));
-      const snap = await getDocs(q);
-      if (snap.empty){
-        listEl.innerHTML = '<div style="opacity:.75">No saved scripts yet.</div>';
-        return;
-      }
-      listEl.innerHTML = '';
-      snap.forEach(docSnap=>{
-        const d = docSnap.data();
-        const row = document.createElement('div');
-        row.style.cssText = 'display:flex;justify-content:space-between;gap:8px;align-items:center;border:1px solid #222;border-radius:10px;padding:8px 10px;margin:8px 0;background:#0b0b0b;';
-        const when = d.updatedAt?.toDate ? d.updatedAt.toDate().toLocaleString() : '';
-        row.innerHTML = `
-          <div>
-            <div style="font-weight:600">${d.name || '(untitled)'}</div>
-            <div style="opacity:.75;font-size:12px">${when}</div>
-          </div>
-          <div style="display:flex;gap:8px">
-            <button data-id="${docSnap.id}" class="load">Load</button>
-            <button data-id="${docSnap.id}" class="delete">Delete</button>
-          </div>
-        `;
-        listEl.appendChild(row);
-      });
-    }catch(err){
-      console.error(err);
-      listEl.innerHTML = '<div style="opacity:.75">Failed to load list.</div>';
-    }
-  }
-
-  // Click handling in dialog
-  listEl?.addEventListener('click', async (e)=>{
-    const id = e.target?.dataset?.id;
-    if(!id) return;
-
-    if(e.target.classList.contains('load')){
-      try{
-        const d = await getDoc(doc(db,'scripts',id));
-        if (d.exists()){
-          const data = d.data();
-          // Put into textarea then click your existing Apply button
-          if (scriptBox) scriptBox.value = data.text || '';
-          applyBtn?.click();
-          setStatus?.(`Loaded “${data.name || '(untitled)'}”.`);
-          dlg.close();
-        }
-      }catch(err){
-        console.error(err);
-        alert('Load failed.');
-      }
-    }
-
-    if(e.target.classList.contains('delete')){
-      if(!confirm('Delete this saved script?')) return;
-      try{
-        await deleteDoc(doc(db,'scripts',id));
-        showList(); // refresh
-      }catch(err){
-        console.error(err);
-        alert('Delete failed.');
-      }
-    }
-  });
-
-  // Wire buttons
-  saveBtn?.addEventListener('click', doSave);
-  loadBtn?.addEventListener('click', showList);
-  closeDlg?.addEventListener('click', ()=>dlg.close());
-</script>
-
-
 </body></html>`;
   }
 
@@ -458,18 +319,15 @@
     prompterWin = window.open('', 'TeleprompterWindow', 'popup=yes,width=1200,height=800');
     if(!prompterWin){ alert('Pop-up blocked. Please allow pop-ups for this site.'); status.textContent='Popup blocked.'; return; }
 
-    // write a full, closed document to avoid partial-write errors
     prompterWin.document.open();
     prompterWin.document.write(prompterHTML());
     prompterWin.document.close();
 
-    // handshake
     if (pingTimer) clearInterval(pingTimer);
     pingTimer = setInterval(()=>{
       try{ if (prompterWin && !prompterWin.closed) prompterWin.postMessage({type:'ping'}, '*'); }catch{}
     }, 500);
 
-    // send current state after a brief delay to ensure script is ready
     setTimeout(()=>{ broadcastState(); status.textContent='Prompter ready.'; manageAuto(); }, 300);
   }
 
@@ -503,7 +361,6 @@
     viewer.scrollTop = Math.max(0, viewer.scrollTop + amount);
   }
   document.addEventListener('keydown', (e)=>{
-    // ensure keys control only the preview scroller
     if (['ArrowUp','ArrowDown',' ','Spacebar','g','G'].includes(e.key)) e.preventDefault();
     if (e.key==='ArrowUp') scrollBy(-60);
     else if (e.key==='Down' || e.key==='ArrowDown') scrollBy(60);
@@ -519,19 +376,17 @@
     if(d.type==='pong'){
       if (pingTimer) { clearInterval(pingTimer); pingTimer=null; }
       status.textContent = 'Connected to prompter';
-      manageAuto(); // ensure operator stops driving when child is present
+      manageAuto();
     } else if (d.type==='scroll'){
-      // Mirror child scroll to operator without loop
       isRemoteScroll = true; viewer.scrollTop = d.scrollTop||0; isRemoteScroll=false;
       state.scrollTop = viewer.scrollTop;
     } else if (d.type==='ready'){
-      // Child reported ready — push full state
       broadcastState();
       manageAuto();
     }
   });
 
-  // Initial demo text for quick testing
+  // Initial demo text
   state.text = `THIS IS A SAMPLE TELEPROMPTER SCRIPT
 
 Use the controls to adjust font size, margins, speed, and guide.
@@ -543,16 +398,16 @@ Press Space to toggle autoscroll. Use ↑/↓ to nudge.`;
 })();
 </script>
 
-<!-- ===== NEW: Firebase-powered Save/Load (isolated in its own module) ===== -->
+<!-- ===== Firebase Save/Load (Firestore + Anonymous Auth) ===== -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
   import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js";
   import {
     getFirestore, collection, addDoc, getDocs, getDoc, doc, deleteDoc,
-    serverTimestamp, query, orderBy
+    serverTimestamp, query, orderBy, where
   } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
 
-  // --- Your Firebase config ---
+  // Your Firebase config (Firestore created in TEST mode; code is the same)
   const firebaseConfig = {
     apiKey: "AIzaSyALVu4YBscEBpIGn0N__x6HdT4yHbWbi3Q",
     authDomain: "teleprompter-1234b.firebaseapp.com",
@@ -562,34 +417,31 @@ Press Space to toggle autoscroll. Use ↑/↓ to nudge.`;
     appId: "1:63079515130:web:13d51e6f8aa62c4c0ada43"
   };
 
-  // --- Init Firebase ---
   const app = initializeApp(firebaseConfig);
   const auth = getAuth(app);
   const db   = getFirestore(app);
 
-  // Sign in anonymously so rules can target a user
+  // Sign in anonymously (works with Firestore "test mode" rules)
   await signInAnonymously(auth).catch(console.error);
   let uid = null;
   onAuthStateChanged(auth, (user)=>{ uid = user?.uid || null; });
 
-  // --- DOM hooks ---
+  // DOM
   const saveBtn   = document.getElementById('saveScript');
   const loadBtn   = document.getElementById('loadScript');
   const applyBtn  = document.getElementById('applyScript');
   const scriptBox = document.getElementById('script');
-  const statusEl  = document.getElementById('status');
   const dlg       = document.getElementById('loadDialog');
   const listEl    = document.getElementById('savedList');
   const closeDlg  = document.getElementById('closeDialog');
+  const statusEl  = document.getElementById('status');
+  const setStatus = (m)=>{ if(statusEl) statusEl.textContent = m; };
 
-  function setStatus(msg){ statusEl.textContent = msg; }
-
-  // Save current textarea to Firestore
+  // Save current script
   async function doSave(){
-    const text = scriptBox.value || '';
+    const text = scriptBox?.value || '';
     const name = prompt('Enter a name for this script:');
     if (!name) return;
-
     try{
       await addDoc(collection(db, 'scripts'), {
         name, text,
@@ -597,20 +449,26 @@ Press Space to toggle autoscroll. Use ↑/↓ to nudge.`;
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp()
       });
-      setStatus(`Saved “${name}”.`);
+      setStatus?.(`Saved “${name}”.`);
     }catch(err){
       console.error(err);
       alert('Save failed. See console for details.');
     }
   }
 
-  // Show list of saved scripts
+  // Show saved list (filtered to current anonymous user if available)
   async function showList(){
     dlg.showModal();
     listEl.innerHTML = '<div class="muted">Loading…</div>';
     try{
-      const q = query(collection(db,'scripts'), orderBy('updatedAt','desc'));
-      const snap = await getDocs(q);
+      let qRef = collection(db,'scripts');
+      // If we have a uid, show only this user's scripts; else show all (test mode)
+      if(uid){
+        qRef = query(qRef, where('owner','==',uid), orderBy('updatedAt','desc'));
+      }else{
+        qRef = query(qRef, orderBy('updatedAt','desc'));
+      }
+      const snap = await getDocs(qRef);
       if (snap.empty){
         listEl.innerHTML = '<div class="muted">No saved scripts yet.</div>';
         return;
@@ -639,8 +497,8 @@ Press Space to toggle autoscroll. Use ↑/↓ to nudge.`;
     }
   }
 
-  // Load or Delete click handling
-  listEl.addEventListener('click', async (e)=>{
+  // Handle clicks inside dialog
+  listEl?.addEventListener('click', async (e)=>{
     const id = e.target?.dataset?.id;
     if(!id) return;
 
@@ -649,10 +507,10 @@ Press Space to toggle autoscroll. Use ↑/↓ to nudge.`;
         const d = await getDoc(doc(db,'scripts',id));
         if (d.exists()){
           const data = d.data();
-          scriptBox.value = data.text || '';
-          // Apply to preview + prompter
-          applyBtn.click();
-          setStatus(`Loaded “${data.name || '(untitled)'}”.`);
+          if (scriptBox) scriptBox.value = data.text || '';
+          // Apply to preview & prompter
+          applyBtn?.click();
+          setStatus?.(`Loaded “${data.name || '(untitled)'}”.`);
           dlg.close();
         }
       }catch(err){
@@ -674,9 +532,13 @@ Press Space to toggle autoscroll. Use ↑/↓ to nudge.`;
   });
 
   // Wire buttons
-  saveBtn.addEventListener('click', doSave);
-  loadBtn.addEventListener('click', showList);
-  closeDlg.addEventListener('click', ()=>dlg.close());
+  saveBtn?.addEventListener('click', doSave);
+  loadBtn?.addEventListener('click', showList);
+  closeDlg?.addEventListener('click', ()=>dlg.close());
 </script>
 </body>
 </html>
+"""
+with open('/mnt/data/index.html', 'w', encoding='utf-8') as f:
+    f.write(html)
+print("Saved to /mnt/data/index.html")
