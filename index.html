@@ -99,6 +99,8 @@
       <div style="display:flex;gap:12px;align-items:center;justify-content:space-between;margin-top:6px">
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button id="applyScript">Load to Preview & Prompter</button>
+          <button id="saveScript" title="Save script to Firebase">Save</button>
+<button id="loadScript" title="Load a saved script">Load</button>
           <!-- NEW: Save / Load -->
           <button id="saveScript" title="Save script to Firebase">Save</button>
           <button id="loadScript" title="Load a saved script">Load</button>
@@ -127,6 +129,7 @@
       <span class="muted">Click “Load” to replace the current script.</span>
     </div>
   </dialog>
+  
 
 <script>
 /* ===== Existing teleprompter logic (unchanged) ===== */
@@ -312,6 +315,139 @@
   window.parent && window.parent.postMessage({type:'ready'}, '*');
 })();
 <\/script>
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
+  import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js";
+  import {
+    getFirestore, collection, addDoc, getDocs, getDoc, doc, deleteDoc,
+    serverTimestamp, query, orderBy
+  } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
+
+  // Your config
+  const firebaseConfig = {
+    apiKey: "AIzaSyALVu4YBscEBpIGn0N__x6HdT4yHbWbi3Q",
+    authDomain: "teleprompter-1234b.firebaseapp.com",
+    projectId: "teleprompter-1234b",
+    storageBucket: "teleprompter-1234b.firebasestorage.app",
+    messagingSenderId: "63079515130",
+    appId: "1:63079515130:web:13d51e6f8aa62c4c0ada43"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const auth = getAuth(app);
+  const db   = getFirestore(app);
+
+  // Sign in (anonymous)
+  await signInAnonymously(auth).catch(console.error);
+  let uid = null;
+  onAuthStateChanged(auth, (u)=>{ uid = u?.uid || null; });
+
+  // DOM
+  const saveBtn   = document.getElementById('saveScript');
+  const loadBtn   = document.getElementById('loadScript');
+  const applyBtn  = document.getElementById('applyScript');
+  const scriptBox = document.getElementById('script');   // your existing textarea
+  const dlg       = document.getElementById('loadDialog');
+  const listEl    = document.getElementById('savedList');
+  const closeDlg  = document.getElementById('closeDialog');
+  const statusEl  = document.getElementById('status');   // optional status span
+  const setStatus = (m)=>{ if(statusEl) statusEl.textContent = m; };
+
+  // Save current script
+  async function doSave(){
+    const text = scriptBox?.value || '';
+    const name = prompt('Enter a name for this script:');
+    if (!name) return;
+    try{
+      await addDoc(collection(db, 'scripts'), {
+        name, text,
+        owner: uid || null,
+        createdAt: serverTimestamp(),
+        updatedAt: serverTimestamp()
+      });
+      setStatus?.(`Saved “${name}”.`);
+    }catch(err){
+      console.error(err);
+      alert('Save failed. See console for details.');
+    }
+  }
+
+  // Show saved list
+  async function showList(){
+    dlg.showModal();
+    listEl.innerHTML = '<div style="opacity:.75">Loading…</div>';
+    try{
+      const q = query(collection(db,'scripts'), orderBy('updatedAt','desc'));
+      const snap = await getDocs(q);
+      if (snap.empty){
+        listEl.innerHTML = '<div style="opacity:.75">No saved scripts yet.</div>';
+        return;
+      }
+      listEl.innerHTML = '';
+      snap.forEach(docSnap=>{
+        const d = docSnap.data();
+        const row = document.createElement('div');
+        row.style.cssText = 'display:flex;justify-content:space-between;gap:8px;align-items:center;border:1px solid #222;border-radius:10px;padding:8px 10px;margin:8px 0;background:#0b0b0b;';
+        const when = d.updatedAt?.toDate ? d.updatedAt.toDate().toLocaleString() : '';
+        row.innerHTML = `
+          <div>
+            <div style="font-weight:600">${d.name || '(untitled)'}</div>
+            <div style="opacity:.75;font-size:12px">${when}</div>
+          </div>
+          <div style="display:flex;gap:8px">
+            <button data-id="${docSnap.id}" class="load">Load</button>
+            <button data-id="${docSnap.id}" class="delete">Delete</button>
+          </div>
+        `;
+        listEl.appendChild(row);
+      });
+    }catch(err){
+      console.error(err);
+      listEl.innerHTML = '<div style="opacity:.75">Failed to load list.</div>';
+    }
+  }
+
+  // Click handling in dialog
+  listEl?.addEventListener('click', async (e)=>{
+    const id = e.target?.dataset?.id;
+    if(!id) return;
+
+    if(e.target.classList.contains('load')){
+      try{
+        const d = await getDoc(doc(db,'scripts',id));
+        if (d.exists()){
+          const data = d.data();
+          // Put into textarea then click your existing Apply button
+          if (scriptBox) scriptBox.value = data.text || '';
+          applyBtn?.click();
+          setStatus?.(`Loaded “${data.name || '(untitled)'}”.`);
+          dlg.close();
+        }
+      }catch(err){
+        console.error(err);
+        alert('Load failed.');
+      }
+    }
+
+    if(e.target.classList.contains('delete')){
+      if(!confirm('Delete this saved script?')) return;
+      try{
+        await deleteDoc(doc(db,'scripts',id));
+        showList(); // refresh
+      }catch(err){
+        console.error(err);
+        alert('Delete failed.');
+      }
+    }
+  });
+
+  // Wire buttons
+  saveBtn?.addEventListener('click', doSave);
+  loadBtn?.addEventListener('click', showList);
+  closeDlg?.addEventListener('click', ()=>dlg.close());
+</script>
+
+
 </body></html>`;
   }
 
