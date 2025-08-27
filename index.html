@@ -1,46 +1,303 @@
-Open Teleprompter Window
-▶︎ Start
-⏸︎ Pause
-⟲ Top
-⤢ Fullscreen (Prompter)
-Speed (px/s)
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Teleprompter — Operator & Prompter (Aligned Guide, Offline, Save/Load, Fullscreen)</title>
+<title>Teleprompter — Operator & Prompter (Paragraph Letters, Offline, Save/Load, Fullscreen)</title>
+<style>
+:root{
+--fontSize: 64px;
+--padLRvw: 8;
+    /* top/bottom padding now in pixels relative to the VIEWER height, not window vh */
+    --padTBpx: 0px;
+    --padTBpx: 0px;      /* top/bottom padding computed from viewer height */
+--guideY: 35%;
+    --labelColEm: 2.2em; /* gutter width for A–Z labels */
+    --labelColor: #64b5f6; /* color for A–Z labels */
+}
+*{box-sizing:border-box}
+html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+@@ -52,6 +53,24 @@
+.flipY{transform:scaleY(-1)}
+.viewer:focus{outline:2px solid #2a7fff}
 
-90
-Font (px)
+  /* Paragraph label layout */
+  .content .para{
+    display:grid;
+    grid-template-columns: var(--labelColEm) 1fr;
+    column-gap: .6em;
+    align-items: baseline;
+    margin: .35em 0 .35em 0;
+  }
+  .content .label{
+    color: var(--labelColor);
+    text-align:right;
+    opacity: 1;
+    user-select:none;
+    font-weight:600;
+    letter-spacing:.03em;
+  }
+  .content .ptext{white-space:pre-wrap}
 
-48
-Line Height
+/* Load dialog */
+dialog#loadDialog{border:1px solid #333;background:#0f0f0f;color:#fff;border-radius:16px;padding:0;max-width:640px;width:90%}
+.dlg-head{padding:14px 16px;border-bottom:1px solid #222;display:flex;align-items:center;justify-content:space-between}
+@@ -74,8 +93,8 @@
+<h2 style="margin:0;">Operator</h2>
+<div class="muted small" id="instructions">
+Keys: <span class="kbd">Space</span> autoscroll · <span class="kbd">↑/↓</span> nudge ·
+          <span class="kbd">G</span> guide · <span class="kbd">T</span> tools ·
+          <span class="kbd">F</span> fullscreen · <span class="kbd">⌘/Ctrl+S</span> save
+          <span class="kbd">G</span> guide · <span class="kbd">A–Z</span> jump to paragraph ·
+          <span class="kbd">T</span> tools · <span class="kbd">F</span> fullscreen · <span class="kbd">⌘/Ctrl+S</span> save
+</div>
+</div>
+<div class="actions">
+@@ -164,6 +183,47 @@ <h2 style="margin:0;">Operator</h2>
 
-1.50
-Column (ch)
+let prompterWin = null, pingTimer = null, autosTimer = null, isRemoteScroll = false;
 
-60
-Side Pad (vw)
+  /* Map letter -> paragraph element (operator) */
+  let labelMap = {};
 
-6
-Flip Prompter
+  /* Build labeled paragraphs into a container; returns {labelMap} */
+  function buildParagraphs(text, container){
+    container.innerHTML = '';
+    labelMap = {};
+    const normalized = (text || '').replace(/\r\n/g, '\n');
+    // Split by blank lines (one or more empty lines)
+    const paras = normalized.split(/\n\s*\n+/);
+    const MAX = 26;
+    const A = 'A'.charCodeAt(0);
 
-Load to Preview & Prompter
-Autosave: ON
-💾 Save to File
-📂 Load from File
-🗑️ Clear Local
-Cloud: offline
-Cloud Doc ID
-＋ New Cloud Doc
-☁ Save to Cloud
-☁ Load from Cloud
-🔗 Copy Share Link
-Open link on another device for live sync
-Space: play/pause • ↑/↓: speed ±10 • Home: top • M: flip prompter • F: prompter fullscreen
-Script
-WELCOME TO THE DUAL‑WINDOW TELEPROMPTER
+    for (let i = 0; i < paras.length; i++){
+      const raw = paras[i];
+      // Skip if the paragraph is truly empty (e.g., leading/trailing blanks)
+      if (!raw.trim() && i !== 0) continue;
 
-• Click “Open Teleprompter Window” and drag it to your extended display.
-• Use the controls to adjust speed, font, line height, and column width.
-• Toggle “Flip Prompter” to mirror only the external teleprompter.
+      const para = document.createElement('div');
+      para.className = 'para';
+      const label = (i < MAX) ? String.fromCharCode(A + i) : ''; // only A–Z
+      if (label){
+        para.setAttribute('data-label', label);
+        para.id = 'para-' + label;
+      }
 
-Pro tip: Press Space to Start/Pause, and M to flip the prompter.
-Operator Preview (manual scroll mirrors to prompter)
-Dev Self‑Tests (click to open)
-is escaped', /<\\/script>/.test(html)); try{ const parser = new DOMParser(); const doc = parser.parseFromString(html, 'text/html'); expect('Contains #viewer', !!doc.getElementById('viewer')); expect('Contains #text', !!doc.getElementById('text')); }catch(e){ expect('DOMParser parse', false); } try{ const src = openPrompter.toString(); expect('openPrompter uses Blob', /new Blob\(\[html\], \{ type: 'text\/html' \}\)/.test(src)); expect('openPrompter avoids document.write', !/document\.write/.test(src)); }catch(e){ expect('openPrompter introspection', false); } expect('Cloud API injected', !!window.__CLOUD__); } // ================= Keyboard ================= document.addEventListener('keydown', (e)=>{ const tag = (e.target && e.target.tagName)||''; if (/INPUT|TEXTAREA/.test(tag)) return; if (e.key === ' '){ e.preventDefault(); togglePlay(); } else if (e.key === 'ArrowDown'){ e.preventDefault(); bumpSpeed(+10); } else if (e.key === 'ArrowUp'){ e.preventDefault(); bumpSpeed(-10); } else if (e.key === 'Home'){ e.preventDefault(); state.scrollTop = 0; pushVisuals(); send('scroll',{scrollTop:0}); } else if (e.key.toLowerCase()==='m'){ state.flipPrompter = !state.flipPrompter; $('flipChk').checked = state.flipPrompter; pushState(); pushVisuals(); } else if (e.key.toLowerCase()==='f'){ send('fullscreen'); } });
+      const lbl = document.createElement('div');
+      lbl.className = 'label';
+      lbl.textContent = label || '';
+      const ptext = document.createElement('div');
+      ptext.className = 'ptext';
+      ptext.textContent = raw; // pre-wrap is handled by CSS
+
+      para.appendChild(lbl);
+      para.appendChild(ptext);
+      container.appendChild(para);
+
+      if (label) labelMap[label] = para;
+    }
+  }
+
+// Convert padTB (in % of viewer height) to px and set CSS var
+function updatePadTBpx(){
+const h = viewer?.clientHeight || 0;
+@@ -214,7 +274,7 @@ <h2 style="margin:0;">Operator</h2>
+function manageAuto(){ stopOpAuto(); if(state.autoscroll){ if(!prompterWin || prompterWin.closed){ stepOp(); } } }
+
+function render(){
+    content.textContent = state.text || '';
+    // numeric UI
+document.documentElement.style.setProperty('--fontSize', state.fontSize + 'px');
+document.documentElement.style.setProperty('--padLRvw', state.padLR);
+document.documentElement.style.setProperty('--guideY', state.guidePos + '%');
+@@ -228,23 +288,49 @@ <h2 style="margin:0;">Operator</h2>
+speed.value = state.speed; speedVal.textContent = state.speed + ' px/s';
+showGuide.checked = state.guideVisible; autoscroll.checked = state.autoscroll; invertH.checked = state.invertH; invertV.checked = state.invertV;
+
+    // (re)build paragraphs with labels
+    buildParagraphs(state.text, content);
+
+updatePadTBpx();
+}
+
+function send(msg){ if (prompterWin && !prompterWin.closed){ prompterWin.postMessage(msg, '*'); } }
+function broadcastState(){ send({type:'state', state}); }
+
+  /* Jump so paragraph top aligns to guide line in THIS window */
+  function jumpToLabel(letter){
+    const L = (letter||'').toUpperCase();
+    const el = labelMap[L];
+    if (!el) return;
+    const guidePx = viewer.clientHeight * (state.guidePos/100);
+    const target = Math.max(0, el.offsetTop - guidePx);
+    viewer.scrollTop = target;
+    state.scrollTop = viewer.scrollTop;
+    // Tell prompter to do its own precise local jump
+    send({type:'jump', label: L});
+  }
+
+function prompterHTML(){ return `<!DOCTYPE html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Prompter</title>
+<style>
+:root{--fontSize:${state.fontSize}px;--padLRvw:${state.padLR};--padTBpx:0px;--guideY:${state.guidePos}%}
+:root{
+  --fontSize:${state.fontSize}px;
+  --padLRvw:${state.padLR};
+  --padTBpx:0px;
+  --guideY:${state.guidePos}%;
+  --labelColEm:2.2em;
+  --labelColor:#64b5f6;
+}
+html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+.viewer{position:relative;height:100%;overflow:auto;border-top:1px solid #222}
+.content{font-size:var(--fontSize);line-height:1.2;padding:var(--padTBpx) calc(var(--padLRvw)*1vw);white-space:pre-wrap;word-break:break-word}
+/* Absolute overlay guide to match operator exactly */
+.guide{position:absolute;top:var(--guideY);left:0;right:0;height:2px;background:#f44336;opacity:.8;pointer-events:none;z-index:2}
+.mirrorX{transform:scaleX(-1)}
+.flipY{transform:scaleY(-1)}
+/* Paragraph labels */
+.content .para{display:grid;grid-template-columns: var(--labelColEm) 1fr;column-gap:.6em;align-items:baseline;margin:.35em 0}
+.content .label{color:var(--labelColor);text-align:right;opacity:1;user-select:none;font-weight:600;letter-spacing:.03em}
+.content .ptext{white-space:pre-wrap}
+/* Floating fullscreen button in prompter window */
+.fs-fab{position:fixed;top:10px;right:10px;z-index:9999}
+.fs-pill{border-radius:999px;padding:8px 12px;border:1px solid #333;background:#121212;color:#fff}
+@@ -259,33 +345,64 @@ <h2 style="margin:0;">Operator</h2>
+ const viewer=document.getElementById('v'), content=document.getElementById('c'), guide=document.getElementById('g');
+ const fsBtn=document.getElementById('fsBtnP');
+ let state={text:'',fontSize:64,padLR:8,padTB:0,guidePos:35,guideVisible:true,speed:80,autoscroll:false,invertH:false,invertV:false,scrollTop:0};
+  let autosTimer=null, isRemoteScroll=false;
+  let autosTimer=null, isRemoteScroll=false, suppressParent=false;
+  let labelMap = {};
+
+ function updatePadTBpx(){
+   const h = viewer?.clientHeight || 0;
+   const px = h * (state.padTB/100);
+   document.documentElement.style.setProperty('--padTBpx', px + 'px');
+ }
+
+  function buildParagraphs(text){
+    content.innerHTML='';
+    labelMap={};
+    const normalized=(text||'').replace(/\\r\\n/g,'\\n');
+    const paras=normalized.split(/\\n\\s*\\n+/);
+    const MAX=26, A='A'.charCodeAt(0);
+    for(let i=0;i<paras.length;i++){
+      const raw=paras[i];
+      if(!raw.trim() && i!==0) continue;
+      const para=document.createElement('div'); para.className='para';
+      const label=(i<MAX)?String.fromCharCode(A+i):'';
+      if(label){ para.setAttribute('data-label',label); para.id='p-'+label; }
+      const L=document.createElement('div'); L.className='label'; L.textContent=label||'';
+      const T=document.createElement('div'); T.className='ptext'; T.textContent=raw;
+      para.appendChild(L); para.appendChild(T); content.appendChild(para);
+      if(label) labelMap[label]=para;
+    }
+  }
+
+ function apply(){
+    content.textContent=state.text||'';
+   document.documentElement.style.setProperty('--fontSize',state.fontSize+'px');
+   document.documentElement.style.setProperty('--padLRvw',state.padLR);
+   document.documentElement.style.setProperty('--guideY',state.guidePos+'%');
+   guide.style.display=state.guideVisible?'block':'none';
+   content.classList.toggle('mirrorX',!!state.invertH);
+   content.classList.toggle('flipY',!!state.invertV);
+    buildParagraphs(state.text);
+   updatePadTBpx();
+   isRemoteScroll=true; viewer.scrollTop=state.scrollTop||0; isRemoteScroll=false;
+    if(autosTimer){cancelAnimationFrame(autosTimer); autosTimer=null;}
+    if(autosTimer){cancelAnimationFrame(autosTimer);autosTimer=null;}
+   if(state.autoscroll){ step(); }
+ }
+ function step(){
+   const sp=state.speed||0; let last=performance.now();
+    function tick(t){ const dt=(t-last)/1000; last=t; viewer.scrollTop+=sp*dt; window.parent && window.parent.postMessage({type:'scroll',scrollTop:viewer.scrollTop},'*'); autosTimer=requestAnimationFrame(tick); }
+    function tick(t){ const dt=(t-last)/1000; last=t; viewer.scrollTop+=sp*dt; if(!suppressParent){ window.parent && window.parent.postMessage({type:'scroll',scrollTop:viewer.scrollTop},'*'); } autosTimer=requestAnimationFrame(tick); }
+   autosTimer=requestAnimationFrame(tick);
+ }
+
+  // Local jump: align paragraph top to local guide
+  function jumpToLabel(letter){
+    const L=(letter||'').toUpperCase();
+    const el=labelMap[L]; if(!el) return;
+    const guidePx=viewer.clientHeight*(state.guidePos/100);
+    const target=Math.max(0, el.offsetTop - guidePx);
+    suppressParent=true;
+    viewer.scrollTop=target;
+    setTimeout(()=>{ suppressParent=false; }, 120);
+  }
+
+ // Fullscreen in prompter
+ async function toggleFS(){
+   try{
+@@ -305,13 +422,17 @@ <h2 style="margin:0;">Operator</h2>
+   if(d.type==='ping'){ window.parent && window.parent.postMessage({type:'pong'},'*'); }
+   else if(d.type==='state'){ state=d.state||state; apply(); }
+   else if(d.type==='scroll'){ isRemoteScroll=true; viewer.scrollTop=d.scrollTop||0; isRemoteScroll=false; }
+    else if(d.type==='jump'){ jumpToLabel(d.label); }
+ });
+  viewer.addEventListener('scroll',()=>{ if(isRemoteScroll) return; state.scrollTop=viewer.scrollTop; window.parent && window.parent.postMessage({type:'scroll',scrollTop:state.scrollTop},'*'); },{passive:true});
+  viewer.addEventListener('scroll',()=>{ if(isRemoteScroll || suppressParent) return; window.parent && window.parent.postMessage({type:'scroll',scrollTop:viewer.scrollTop},'*'); },{passive:true});
+ window.addEventListener('resize', updatePadTBpx);
+ window.parent && window.parent.postMessage({type:'ready'},'*');
+
+  // Shortcut: F to toggle fullscreen (prompter window)
+  document.addEventListener('keydown',(e)=>{ if(e.key==='f' || e.key==='F'){ e.preventDefault(); toggleFS(); } });
+  // Shortcuts inside prompter (optional): F for fullscreen, A–Z for local jump
+  document.addEventListener('keydown',(e)=>{
+    if(e.key==='f' || e.key==='F'){ e.preventDefault(); toggleFS(); return; }
+    if(/^[a-zA-Z]$/.test(e.key)){ e.preventDefault(); jumpToLabel(e.key); }
+  });
+})();<\/script>
+</body></html>`; }
+
+@@ -348,19 +469,29 @@ <h2 style="margin:0;">Operator</h2>
+// Scroll sync: operator -> prompter
+viewer.addEventListener('scroll', ()=>{ if(isRemoteScroll) return; state.scrollTop = viewer.scrollTop; send({type:'scroll', scrollTop: state.scrollTop}); }, {passive:true});
+
+  // Keyboard controls
+  // Keyboard controls + Letter jumps
+function scrollBy(amount){ viewer.scrollTop = Math.max(0, viewer.scrollTop + amount); }
+document.addEventListener('keydown', (e)=>{
+const key = e.key;
+    const tag = (document.activeElement && document.activeElement.tagName) || '';
+    const typing = tag === 'TEXTAREA' || tag === 'INPUT' || document.activeElement?.isContentEditable;
+
+const isMac = navigator.platform.toUpperCase().includes('MAC');
+if ((isMac && e.metaKey && key.toLowerCase()==='s') || (!isMac && e.ctrlKey && key.toLowerCase()==='s')) { e.preventDefault(); document.dispatchEvent(new CustomEvent('tp-save')); return; }
+
+    if (/^[a-zA-Z]$/.test(key) && !typing){
+      e.preventDefault();
+      jumpToLabel(key);
+      return;
+    }
+
+if (['ArrowUp','ArrowDown',' ','Spacebar','g','G','t','T','f','F'].includes(key)) e.preventDefault();
+if (key==='ArrowUp') scrollBy(-60);
+else if (key==='ArrowDown' || key==='Down') scrollBy(60);
+else if (key===' ' || key==='Spacebar'){ autoscroll.checked = !autoscroll.checked; state.autoscroll = autoscroll.checked; render(); broadcastState(); manageAuto(); }
+else if (key==='g' || key==='G'){ showGuide.checked = !showGuide.checked; state.guideVisible = showGuide.checked; render(); broadcastState(); }
+    else if (key==='t' || key==='T'){ toggleUI(); }
+    else if (key==='f' || key==='F'){ toggleFullscreen(); }
+    else if (key==='t' || key==='T'){ if(!typing){ toggleUI(); } }
+    else if (key==='f' || key==='F'){ if(!typing){ toggleFullscreen(); } }
+});
+
+// Keep padding aligned on resize
+@@ -384,12 +515,13 @@ <h2 style="margin:0;">Operator</h2>
+
+// Initial text if none
+if (!state.text) {
+    state.text = `THIS IS A SAMPLE TELEPROMPTER SCRIPT
+    state.text = `A SHORT EXAMPLE
+
+Paste several paragraphs in the Script box above.
+
+Use the controls to adjust font size, margins, speed, and guide.
+Open the prompter window and drag it to your second display.
+Each blank line starts a new paragraph — the first 26 get A–Z.
+
+Press Space to toggle autoscroll. Use ↑/↓ to nudge.`;
+Press a letter key to jump that paragraph under the red guide.`;
+scriptBox.value = state.text;
+}
