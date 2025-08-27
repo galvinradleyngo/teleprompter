@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Teleprompter — Operator & Prompter (Paragraph Letters, Offline, Save/Load, Fullscreen)</title>
+<title>Teleprompter — Operator & Prompter (Cloud Save w/ Login, Paragraph Letters, Offline, Fullscreen)</title>
 <style>
   :root{
     --fontSize: 64px;
@@ -102,6 +102,11 @@
           <button id="openPrompter">Open Prompter Window</button>
           <button id="fullscreenOp" class="ui-pill" title="F to toggle fullscreen">Fullscreen</button>
           <button id="toggleUIBtn" class="ui-pill" title="T to toggle tools">Hide Tools</button>
+        </div>
+        <div class="row" style="justify-content:flex-end;gap:8px">
+          <span id="who" class="muted">Signed in: Anonymous (local only)</span>
+          <button id="googleSignIn" class="ui-pill" title="Sign in to sync across devices">Sign in with Google</button>
+          <button id="signOut" class="ui-pill" style="display:none">Sign out</button>
         </div>
         <div class="toggles">
           <label class="toggle"><input id="showGuide" type="checkbox" checked> Show Guide</label>
@@ -529,10 +534,13 @@ Press a letter key to jump that paragraph under the red guide.`;
 })();
 </script>
 
-<!-- ===== Firebase: Offline + Save/Load/Rename/Duplicate ===== -->
+<!-- ===== Firebase: Cloud Save (Login for cross-device) + Offline + Save/Load/Rename/Duplicate ===== -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
-  import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js";
+  import {
+    getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider,
+    linkWithPopup, signInWithPopup, signOut
+  } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js";
   import {
     getFirestore, collection, addDoc, getDocs, getDoc, doc, deleteDoc, updateDoc,
     serverTimestamp, query, orderBy, where, enableIndexedDbPersistence
@@ -551,7 +559,7 @@ Press a letter key to jump that paragraph under the red guide.`;
   const auth = getAuth(app);
   const db   = getFirestore(app);
 
-  // Offline persistence for Firestore
+  // Offline persistence for Firestore (best-effort)
   try{
     await enableIndexedDbPersistence(db);
     console.log('Firestore persistence enabled.');
@@ -559,12 +567,7 @@ Press a letter key to jump that paragraph under the red guide.`;
     console.warn('Persistence not available:', e?.code || e);
   }
 
-  // Anonymous sign-in
-  await signInAnonymously(auth).catch(console.error);
-  let uid = null;
-  onAuthStateChanged(auth, (user)=>{ uid = user?.uid || null; });
-
-  // DOM
+  // DOM for auth + save/load
   const saveBtn   = document.getElementById('saveScript');
   const loadBtn   = document.getElementById('loadScript');
   const applyBtn  = document.getElementById('applyScript');
@@ -575,9 +578,62 @@ Press a letter key to jump that paragraph under the red guide.`;
   const statusEl  = document.getElementById('status');
   const setStatus = (m)=>{ if(statusEl) statusEl.textContent = m; };
 
+  const whoEl     = document.getElementById('who');
+  const signInBtn = document.getElementById('googleSignIn');
+  const signOutBtn= document.getElementById('signOut');
+
+  const provider = new GoogleAuthProvider();
+  provider.setCustomParameters({ prompt: 'select_account' });
+
   // Track the currently loaded/edited doc
   let currentDocId = null;
   let currentName  = '';
+  let uid = null;
+
+  // Anonymous by default; you can link to Google to keep the same UID (and thus keep your saved docs).
+  await signInAnonymously(auth).catch(console.error);
+
+  onAuthStateChanged(auth, (user)=>{
+    uid = user?.uid || null;
+    const isAnon = !!user?.isAnonymous;
+    const name = user?.displayName || user?.email || (isAnon ? 'Anonymous (local only)' : 'Signed in');
+
+    whoEl.textContent = `Signed in: ${name}`;
+    signInBtn.style.display = isAnon ? 'inline-block' : 'none';
+    signOutBtn.style.display = isAnon ? 'none' : 'inline-block';
+
+    // If load dialog is open, refresh list for the new user.
+    if (typeof dlg?.open === 'boolean' && dlg.open) showList();
+  });
+
+  async function doGoogleSignIn(){
+    const cur = auth.currentUser;
+    try{
+      if (cur && cur.isAnonymous){
+        // Link Google to the current anonymous user to preserve UID & access to prior saves.
+        await linkWithPopup(cur, provider);
+      }else{
+        await signInWithPopup(auth, provider);
+      }
+    }catch(err){
+      console.error(err);
+      alert('Sign-in failed. See console for details.');
+    }
+  }
+
+  async function doSignOut(){
+    try{
+      await signOut(auth);
+      // fall back to anonymous so app keeps working
+      await signInAnonymously(auth);
+    }catch(err){
+      console.error(err);
+      alert('Sign-out failed.');
+    }
+  }
+
+  signInBtn.addEventListener('click', doGoogleSignIn);
+  signOutBtn.addEventListener('click', doSignOut);
 
   // Allow Ctrl/Cmd+S from teleprompter script
   document.addEventListener('tp-save', ()=>doSave());
@@ -593,13 +649,14 @@ Press a letter key to jump that paragraph under the red guide.`;
     try{
       if (currentDocId) {
         await updateDoc(doc(db,'scripts', currentDocId), {
-          name: trimmed, text, updatedAt: serverTimestamp()
+          name: trimmed, text, updatedAt: serverTimestamp(), owner: uid || null
         });
         currentName = trimmed;
         setStatus?.(`Updated “${trimmed}”.`);
       } else {
         const ref = await addDoc(collection(db,'scripts'), {
-          name: trimmed, text, owner: uid || null,
+          name: trimmed, text,
+          owner: uid || null,
           createdAt: serverTimestamp(), updatedAt: serverTimestamp()
         });
         currentDocId = ref.id; currentName = trimmed;
@@ -616,14 +673,17 @@ Press a letter key to jump that paragraph under the red guide.`;
     }
   }
 
-  // LOAD LIST (uses your composite index: owner ASC, updatedAt DESC)
+  // LOAD LIST (filter by current signed-in user to enable cross-device sync)
   async function showList(){
     dlg.showModal();
     listEl.innerHTML = '<div class="muted">Loading…</div>';
     try{
-      const qRef = uid
-        ? query(collection(db,'scripts'), where('owner','==',uid), orderBy('updatedAt','desc'))
-        : query(collection(db,'scripts'), orderBy('updatedAt','desc')); // fallback
+      let qRef = collection(db,'scripts');
+      if (uid) {
+        qRef = query(qRef, where('owner','==',uid), orderBy('updatedAt','desc'));
+      } else {
+        qRef = query(qRef, orderBy('updatedAt','desc'));
+      }
 
       const snap = await getDocs(qRef);
       if (snap.empty){
@@ -666,9 +726,10 @@ Press a letter key to jump that paragraph under the red guide.`;
         const ds = await getDoc(doc(db,'scripts',id));
         if (ds.exists()){
           const data = ds.data();
+          const scriptBox = document.getElementById('script');
           if (scriptBox) scriptBox.value = data.text || '';
           currentDocId = id; currentName = data.name || '';
-          applyBtn?.click();
+          document.getElementById('applyScript')?.click();
           setStatus?.(`Loaded “${currentName || '(untitled)'}”.`);
           localStorage.setItem('tp_doc_meta', JSON.stringify({id: currentDocId, name: currentName}));
           dlg.close();
