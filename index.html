@@ -674,23 +674,5 @@ Press a letter key to jump that paragraph under the red guide.`;
     }
   }catch{}
 </script>
-
-<!--
-⚠️ FIRESTORE SECURITY RULES (Public collection)
-To make this work across devices without any auth or codes, set rules like:
-
-rules_version = '2';
-service cloud.firestore {
-  match /databases/{database}/documents {
-    match /publicScripts/{docId} {
-      allow read, list, get: if true;      // anyone can view/list
-      allow create, update, delete: if true; // anyone can write/delete
-    }
-  }
-}
-
-⚠️ This is PUBLIC. Anyone with the URL can see and modify scripts.
-If you want private-but-simple, use the "Access Code vault" version I shared earlier.
--->
 </body>
 </html>
