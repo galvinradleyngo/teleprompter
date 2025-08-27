@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Teleprompter — Operator & Prompter (Cloud Save w/ Login, Paragraph Letters, Offline, Fullscreen)</title>
+<title>Teleprompter — Public Cloud Save (A–Z Paragraphs, Offline, Fullscreen)</title>
 <style>
   :root{
     --fontSize: 64px;
@@ -17,9 +17,8 @@
   html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
   body{display:flex;flex-direction:column;min-height:100vh}
 
-  /* When UI is hidden, hide the topbar; viewer stays. */
+  /* Hide/show tools */
   body.ui-hidden .topbar{display:none}
-  /* Tiny restore pill appears only when hidden */
   .ui-restore{position:fixed;top:10px;right:10px;z-index:9999;display:none}
   body.ui-hidden .ui-restore{display:block}
 
@@ -53,7 +52,7 @@
   .flipY{transform:scaleY(-1)}
   .viewer:focus{outline:2px solid #2a7fff}
 
-  /* Paragraph label layout */
+  /* Paragraph labels A–Z */
   .content .para{
     display:grid;
     grid-template-columns: var(--labelColEm) 1fr;
@@ -103,17 +102,6 @@
           <button id="fullscreenOp" class="ui-pill" title="F to toggle fullscreen">Fullscreen</button>
           <button id="toggleUIBtn" class="ui-pill" title="T to toggle tools">Hide Tools</button>
         </div>
-        <div class="row" style="justify-content:flex-end;gap:8px">
-          <span id="who" class="muted">Signed in: Anonymous (local only)</span>
-          <button id="googleSignIn" class="ui-pill" title="Sign in to sync across devices">Sign in with Google</button>
-          <button id="signOut" class="ui-pill" style="display:none">Sign out</button>
-        </div>
-        <div class="toggles">
-          <label class="toggle"><input id="showGuide" type="checkbox" checked> Show Guide</label>
-          <label class="toggle"><input id="autoscroll" type="checkbox"> Autoscroll</label>
-          <label class="toggle"><input id="invertH" type="checkbox"> Mirror (Prompter only)</label>
-          <label class="toggle"><input id="invertV" type="checkbox"> Flip (Prompter only)</label>
-        </div>
       </div>
     </div>
 
@@ -132,8 +120,8 @@
       <div style="display:flex;gap:12px;align-items:center;justify-content:space-between;margin-top:6px">
         <div style="display:flex;gap:8px;flex-wrap:wrap">
           <button id="applyScript">Load to Preview & Prompter</button>
-          <button id="saveScript" title="Save/Update script in Firebase">💾 Save</button>
-          <button id="loadScript" title="Load a saved script">📂 Load</button>
+          <button id="saveScript" title="Save/Update script (public)">💾 Save</button>
+          <button id="loadScript" title="Load a saved script (public)">📂 Load</button>
         </div>
         <span id="status" class="muted">–</span>
       </div>
@@ -149,14 +137,14 @@
   <!-- Load dialog -->
   <dialog id="loadDialog">
     <div class="dlg-head">
-      <strong>Saved Scripts</strong>
+      <strong>Saved Scripts (Public)</strong>
       <button id="closeDialog">Close</button>
     </div>
     <div class="dlg-body">
       <div id="savedList" class="saved-list"></div>
     </div>
     <div class="dlg-foot">
-      <span class="muted">Click “Load” to replace the current script.</span>
+      <span class="muted">Click “Load” to replace the current script. (Public list)</span>
     </div>
   </dialog>
 
@@ -188,27 +176,23 @@
 
   let prompterWin = null, pingTimer = null, autosTimer = null, isRemoteScroll = false;
 
-  /* Map letter -> paragraph element (operator) */
   let labelMap = {};
 
-  /* Build labeled paragraphs into a container; returns {labelMap} */
   function buildParagraphs(text, container){
     container.innerHTML = '';
     labelMap = {};
     const normalized = (text || '').replace(/\r\n/g, '\n');
-    // Split by blank lines (one or more empty lines)
     const paras = normalized.split(/\n\s*\n+/);
     const MAX = 26;
     const A = 'A'.charCodeAt(0);
 
     for (let i = 0; i < paras.length; i++){
       const raw = paras[i];
-      // Skip if the paragraph is truly empty (e.g., leading/trailing blanks)
       if (!raw.trim() && i !== 0) continue;
 
       const para = document.createElement('div');
       para.className = 'para';
-      const label = (i < MAX) ? String.fromCharCode(A + i) : ''; // only A–Z
+      const label = (i < MAX) ? String.fromCharCode(A + i) : '';
       if (label){
         para.setAttribute('data-label', label);
         para.id = 'para-' + label;
@@ -219,7 +203,7 @@
       lbl.textContent = label || '';
       const ptext = document.createElement('div');
       ptext.className = 'ptext';
-      ptext.textContent = raw; // pre-wrap is handled by CSS
+      ptext.textContent = raw;
 
       para.appendChild(lbl);
       para.appendChild(ptext);
@@ -229,14 +213,12 @@
     }
   }
 
-  // Convert padTB (in % of viewer height) to px and set CSS var
   function updatePadTBpx(){
     const h = viewer?.clientHeight || 0;
     const px = h * (state.padTB/100);
     document.documentElement.style.setProperty('--padTBpx', px + 'px');
   }
 
-  // Show/Hide tools
   function syncUIToggleLabel(){
     const hidden = document.body.classList.contains('ui-hidden');
     toggleUIBtn.textContent = hidden ? 'Show Tools' : 'Hide Tools';
@@ -244,12 +226,11 @@
   function toggleUI(){
     document.body.classList.toggle('ui-hidden');
     syncUIToggleLabel();
-    updatePadTBpx(); // viewer height changes when topbar hides/shows
+    updatePadTBpx();
   }
   toggleUIBtn.addEventListener('click', toggleUI);
   restoreUIBtn.addEventListener('click', toggleUI);
 
-  // Fullscreen for Operator
   async function toggleFullscreen(){
     try{
       if (!document.fullscreenElement){
@@ -259,18 +240,15 @@
         await document.exitFullscreen();
         fullscreenOp.textContent = 'Fullscreen';
       }
-    }catch(e){
-      console.warn('Fullscreen failed:', e);
-    }
+    }catch(e){ console.warn('Fullscreen failed:', e); }
   }
   fullscreenOp.addEventListener('click', toggleFullscreen);
   document.addEventListener('fullscreenchange', ()=>{
     fullscreenOp.textContent = document.fullscreenElement ? 'Exit Fullscreen' : 'Fullscreen';
-    updatePadTBpx(); // recalc after fullscreen change
-    broadcastState(); // keep child in sync
+    updatePadTBpx();
+    broadcastState();
   });
 
-  // Operator-side autoscroll (runs when prompter is NOT open)
   function stopOpAuto(){ if(autosTimer){ cancelAnimationFrame(autosTimer); autosTimer=null; } }
   function stepOp(){ const sp = state.speed || 0; let last = performance.now();
     function tick(t){ const dt = (t - last) / 1000; last = t; viewer.scrollTop += sp * dt; state.scrollTop = viewer.scrollTop; send({type:'scroll', scrollTop: state.scrollTop}); autosTimer = requestAnimationFrame(tick); }
@@ -279,12 +257,11 @@
   function manageAuto(){ stopOpAuto(); if(state.autoscroll){ if(!prompterWin || prompterWin.closed){ stepOp(); } } }
 
   function render(){
-    // numeric UI
     document.documentElement.style.setProperty('--fontSize', state.fontSize + 'px');
     document.documentElement.style.setProperty('--padLRvw', state.padLR);
     document.documentElement.style.setProperty('--guideY', state.guidePos + '%');
     guide.style.display = state.guideVisible ? 'block' : 'none';
-    content.classList.remove('mirrorX','flipY'); // operator is never flipped
+    content.classList.remove('mirrorX','flipY');
     isRemoteScroll = true; viewer.scrollTop = state.scrollTop || 0; isRemoteScroll = false;
 
     fontSize.value = state.fontSize; fontSizeVal.textContent = state.fontSize + 'px';
@@ -293,16 +270,13 @@
     speed.value = state.speed; speedVal.textContent = state.speed + ' px/s';
     showGuide.checked = state.guideVisible; autoscroll.checked = state.autoscroll; invertH.checked = state.invertH; invertV.checked = state.invertV;
 
-    // (re)build paragraphs with labels
     buildParagraphs(state.text, content);
-
     updatePadTBpx();
   }
 
   function send(msg){ if (prompterWin && !prompterWin.closed){ prompterWin.postMessage(msg, '*'); } }
   function broadcastState(){ send({type:'state', state}); }
 
-  /* Jump so paragraph top aligns to guide line in THIS window */
   function jumpToLabel(letter){
     const L = (letter||'').toUpperCase();
     const el = labelMap[L];
@@ -311,7 +285,6 @@
     const target = Math.max(0, el.offsetTop - guidePx);
     viewer.scrollTop = target;
     state.scrollTop = viewer.scrollTop;
-    // Tell prompter to do its own precise local jump
     send({type:'jump', label: L});
   }
 
@@ -332,11 +305,9 @@ html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,
 .guide{position:absolute;top:var(--guideY);left:0;right:0;height:2px;background:#f44336;opacity:.8;pointer-events:none;z-index:2}
 .mirrorX{transform:scaleX(-1)}
 .flipY{transform:scaleY(-1)}
-/* Paragraph labels */
 .content .para{display:grid;grid-template-columns: var(--labelColEm) 1fr;column-gap:.6em;align-items:baseline;margin:.35em 0}
 .content .label{color:var(--labelColor);text-align:right;opacity:1;user-select:none;font-weight:600;letter-spacing:.03em}
 .content .ptext{white-space:pre-wrap}
-/* Floating fullscreen button in prompter window */
 .fs-fab{position:fixed;top:10px;right:10px;z-index:9999}
 .fs-pill{border-radius:999px;padding:8px 12px;border:1px solid #333;background:#121212;color:#fff}
 </style>
@@ -397,7 +368,6 @@ html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,
     autosTimer=requestAnimationFrame(tick);
   }
 
-  // Local jump: align paragraph top to local guide
   function jumpToLabel(letter){
     const L=(letter||'').toUpperCase();
     const el=labelMap[L]; if(!el) return;
@@ -408,7 +378,6 @@ html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,
     setTimeout(()=>{ suppressParent=false; }, 120);
   }
 
-  // Fullscreen in prompter
   async function toggleFS(){
     try{
       if (!document.fullscreenElement){
@@ -433,7 +402,6 @@ html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,
   window.addEventListener('resize', updatePadTBpx);
   window.parent && window.parent.postMessage({type:'ready'},'*');
 
-  // Shortcuts inside prompter (optional): F for fullscreen, A–Z for local jump
   document.addEventListener('keydown',(e)=>{
     if(e.key==='f' || e.key==='F'){ e.preventDefault(); toggleFS(); return; }
     if(/^[a-zA-Z]$/.test(e.key)){ e.preventDefault(); jumpToLabel(e.key); }
@@ -454,10 +422,8 @@ html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,
 
   openBtn.addEventListener('click', openPrompter);
 
-  // Apply button → updates preview + child
   applyBtn.addEventListener('click', ()=>{ state.text = scriptBox.value; render(); broadcastState(); localStorage.setItem('tp_text', state.text); });
 
-  // Persist UI state locally (font/margins/etc.)
   [fontSize,padLR,guidePos,speed].forEach(inp=>{
     inp.addEventListener('input', ()=>{
       state[inp.id==='fontSize'?'fontSize': inp.id==='padLR'?'padLR': inp.id==='guidePos'?'guidePos':'speed'] = +inp.value;
@@ -471,10 +437,8 @@ html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,
   invertH.addEventListener('change', ()=>{ state.invertH = invertH.checked; render(); broadcastState(); });
   invertV.addEventListener('change', ()=>{ state.invertV = invertV.checked; render(); broadcastState(); });
 
-  // Scroll sync: operator -> prompter
   viewer.addEventListener('scroll', ()=>{ if(isRemoteScroll) return; state.scrollTop = viewer.scrollTop; send({type:'scroll', scrollTop: state.scrollTop}); }, {passive:true});
 
-  // Keyboard controls + Letter jumps
   function scrollBy(amount){ viewer.scrollTop = Math.max(0, viewer.scrollTop + amount); }
   document.addEventListener('keydown', (e)=>{
     const key = e.key;
@@ -484,11 +448,7 @@ html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,
     const isMac = navigator.platform.toUpperCase().includes('MAC');
     if ((isMac && e.metaKey && key.toLowerCase()==='s') || (!isMac && e.ctrlKey && key.toLowerCase()==='s')) { e.preventDefault(); document.dispatchEvent(new CustomEvent('tp-save')); return; }
 
-    if (/^[a-zA-Z]$/.test(key) && !typing){
-      e.preventDefault();
-      jumpToLabel(key);
-      return;
-    }
+    if (/^[a-zA-Z]$/.test(key) && !typing){ e.preventDefault(); jumpToLabel(key); return; }
 
     if (['ArrowUp','ArrowDown',' ','Spacebar','g','G','t','T','f','F'].includes(key)) e.preventDefault();
     if (key==='ArrowUp') scrollBy(-60);
@@ -499,10 +459,8 @@ html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,
     else if (key==='f' || key==='F'){ if(!typing){ toggleFullscreen(); } }
   });
 
-  // Keep padding aligned on resize
   window.addEventListener('resize', ()=>{ updatePadTBpx(); broadcastState(); });
 
-  // Rehydrate local cache
   try{
     const cachedText = localStorage.getItem('tp_text');
     if (cachedText) { state.text = cachedText; scriptBox.value = cachedText; }
@@ -518,7 +476,6 @@ html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,
     }
   }catch{}
 
-  // Initial text if none
   if (!state.text) {
     state.text = `A SHORT EXAMPLE
 
@@ -534,18 +491,15 @@ Press a letter key to jump that paragraph under the red guide.`;
 })();
 </script>
 
-<!-- ===== Firebase: Cloud Save (Login for cross-device) + Offline + Save/Load/Rename/Duplicate ===== -->
+<!-- ===== Firebase: PUBLIC Save/Load (no login, no code) ===== -->
 <script type="module">
   import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
   import {
-    getAuth, signInAnonymously, onAuthStateChanged, GoogleAuthProvider,
-    linkWithPopup, signInWithPopup, signOut
-  } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js";
-  import {
     getFirestore, collection, addDoc, getDocs, getDoc, doc, deleteDoc, updateDoc,
-    serverTimestamp, query, orderBy, where, enableIndexedDbPersistence
+    serverTimestamp, query, orderBy, enableIndexedDbPersistence
   } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
 
+  /* Your Firebase (test) config */
   const firebaseConfig = {
     apiKey: "AIzaSyALVu4YBscEBpIGn0N__x6HdT4yHbWbi3Q",
     authDomain: "teleprompter-1234b.firebaseapp.com",
@@ -556,18 +510,14 @@ Press a letter key to jump that paragraph under the red guide.`;
   };
 
   const app = initializeApp(firebaseConfig);
-  const auth = getAuth(app);
   const db   = getFirestore(app);
 
-  // Offline persistence for Firestore (best-effort)
-  try{
-    await enableIndexedDbPersistence(db);
-    console.log('Firestore persistence enabled.');
-  }catch(e){
-    console.warn('Persistence not available:', e?.code || e);
-  }
+  /* Optional offline cache */
+  try{ await enableIndexedDbPersistence(db); }catch(e){ console.warn('Persistence not available:', e?.code || e); }
 
-  // DOM for auth + save/load
+  const COLL = 'publicScripts'; // << All devices read/write here (public)
+
+  // DOM
   const saveBtn   = document.getElementById('saveScript');
   const loadBtn   = document.getElementById('loadScript');
   const applyBtn  = document.getElementById('applyScript');
@@ -578,113 +528,47 @@ Press a letter key to jump that paragraph under the red guide.`;
   const statusEl  = document.getElementById('status');
   const setStatus = (m)=>{ if(statusEl) statusEl.textContent = m; };
 
-  const whoEl     = document.getElementById('who');
-  const signInBtn = document.getElementById('googleSignIn');
-  const signOutBtn= document.getElementById('signOut');
-
-  const provider = new GoogleAuthProvider();
-  provider.setCustomParameters({ prompt: 'select_account' });
-
-  // Track the currently loaded/edited doc
+  // Track current doc to allow update vs create
   let currentDocId = null;
   let currentName  = '';
-  let uid = null;
-
-  // Anonymous by default; you can link to Google to keep the same UID (and thus keep your saved docs).
-  await signInAnonymously(auth).catch(console.error);
-
-  onAuthStateChanged(auth, (user)=>{
-    uid = user?.uid || null;
-    const isAnon = !!user?.isAnonymous;
-    const name = user?.displayName || user?.email || (isAnon ? 'Anonymous (local only)' : 'Signed in');
-
-    whoEl.textContent = `Signed in: ${name}`;
-    signInBtn.style.display = isAnon ? 'inline-block' : 'none';
-    signOutBtn.style.display = isAnon ? 'none' : 'inline-block';
-
-    // If load dialog is open, refresh list for the new user.
-    if (typeof dlg?.open === 'boolean' && dlg.open) showList();
-  });
-
-  async function doGoogleSignIn(){
-    const cur = auth.currentUser;
-    try{
-      if (cur && cur.isAnonymous){
-        // Link Google to the current anonymous user to preserve UID & access to prior saves.
-        await linkWithPopup(cur, provider);
-      }else{
-        await signInWithPopup(auth, provider);
-      }
-    }catch(err){
-      console.error(err);
-      alert('Sign-in failed. See console for details.');
-    }
-  }
-
-  async function doSignOut(){
-    try{
-      await signOut(auth);
-      // fall back to anonymous so app keeps working
-      await signInAnonymously(auth);
-    }catch(err){
-      console.error(err);
-      alert('Sign-out failed.');
-    }
-  }
-
-  signInBtn.addEventListener('click', doGoogleSignIn);
-  signOutBtn.addEventListener('click', doSignOut);
 
   // Allow Ctrl/Cmd+S from teleprompter script
   document.addEventListener('tp-save', ()=>doSave());
 
-  // SAVE: update if loaded; else create
   async function doSave(){
     const text = scriptBox?.value || '';
     const name = prompt('Enter a name for this script:', currentName || '');
-    if (name === null) return; // cancelled
+    if (name === null) return;
     const trimmed = (name || '').trim();
     if (!trimmed) { alert('Please enter a valid name.'); return; }
 
     try{
       if (currentDocId) {
-        await updateDoc(doc(db,'scripts', currentDocId), {
-          name: trimmed, text, updatedAt: serverTimestamp(), owner: uid || null
+        await updateDoc(doc(db, COLL, currentDocId), {
+          name: trimmed, text, updatedAt: serverTimestamp()
         });
         currentName = trimmed;
         setStatus?.(`Updated “${trimmed}”.`);
       } else {
-        const ref = await addDoc(collection(db,'scripts'), {
-          name: trimmed, text,
-          owner: uid || null,
-          createdAt: serverTimestamp(), updatedAt: serverTimestamp()
+        const ref = await addDoc(collection(db, COLL), {
+          name: trimmed, text, createdAt: serverTimestamp(), updatedAt: serverTimestamp()
         });
         currentDocId = ref.id; currentName = trimmed;
         setStatus?.(`Saved “${trimmed}”.`);
       }
-
-      // Also cache locally for offline resilience
       localStorage.setItem('tp_text', text);
       localStorage.setItem('tp_doc_meta', JSON.stringify({id: currentDocId, name: currentName}));
-
     }catch(err){
       console.error(err);
       alert('Save failed. See console for details.');
     }
   }
 
-  // LOAD LIST (filter by current signed-in user to enable cross-device sync)
   async function showList(){
     dlg.showModal();
     listEl.innerHTML = '<div class="muted">Loading…</div>';
     try{
-      let qRef = collection(db,'scripts');
-      if (uid) {
-        qRef = query(qRef, where('owner','==',uid), orderBy('updatedAt','desc'));
-      } else {
-        qRef = query(qRef, orderBy('updatedAt','desc'));
-      }
-
+      const qRef = query(collection(db, COLL), orderBy('updatedAt','desc'));
       const snap = await getDocs(qRef);
       if (snap.empty){
         listEl.innerHTML = '<div class="muted">No saved scripts yet.</div>';
@@ -723,13 +607,12 @@ Press a letter key to jump that paragraph under the red guide.`;
 
     if(e.target.classList.contains('load')){
       try{
-        const ds = await getDoc(doc(db,'scripts',id));
+        const ds = await getDoc(doc(db, COLL, id));
         if (ds.exists()){
           const data = ds.data();
-          const scriptBox = document.getElementById('script');
-          if (scriptBox) scriptBox.value = data.text || '';
+          document.getElementById('script').value = data.text || '';
           currentDocId = id; currentName = data.name || '';
-          document.getElementById('applyScript')?.click();
+          applyBtn?.click();
           setStatus?.(`Loaded “${currentName || '(untitled)'}”.`);
           localStorage.setItem('tp_doc_meta', JSON.stringify({id: currentDocId, name: currentName}));
           dlg.close();
@@ -738,7 +621,7 @@ Press a letter key to jump that paragraph under the red guide.`;
     }
 
     if(e.target.classList.contains('rename')){
-      const ds = await getDoc(doc(db,'scripts',id));
+      const ds = await getDoc(doc(db, COLL, id));
       if (!ds.exists()) return;
       const oldName = ds.data().name || '';
       const newName = prompt('Rename script to:', oldName);
@@ -746,20 +629,20 @@ Press a letter key to jump that paragraph under the red guide.`;
       const trimmed = (newName || '').trim();
       if (!trimmed) return alert('Please enter a valid name.');
       try{
-        await updateDoc(doc(db,'scripts',id), { name: trimmed, updatedAt: serverTimestamp() });
+        await updateDoc(doc(db, COLL, id), { name: trimmed, updatedAt: serverTimestamp() });
         if (currentDocId === id) { currentName = trimmed; localStorage.setItem('tp_doc_meta', JSON.stringify({id: currentDocId, name: currentName})); }
         showList();
       }catch(err){ console.error(err); alert('Rename failed.'); }
     }
 
     if(e.target.classList.contains('duplicate')){
-      const ds = await getDoc(doc(db,'scripts',id));
+      const ds = await getDoc(doc(db, COLL, id));
       if (!ds.exists()) return;
       const d = ds.data();
       const dupName = `${d.name || 'Copy'} (copy)`;
       try{
-        await addDoc(collection(db,'scripts'), {
-          name: dupName, text: d.text || '', owner: uid || null,
+        await addDoc(collection(db, COLL), {
+          name: dupName, text: d.text || '',
           createdAt: serverTimestamp(), updatedAt: serverTimestamp()
         });
         setStatus?.(`Duplicated as “${dupName}”.`);
@@ -770,14 +653,13 @@ Press a letter key to jump that paragraph under the red guide.`;
     if(e.target.classList.contains('delete')){
       if(!confirm('Delete this saved script?')) return;
       try{
-        await deleteDoc(doc(db,'scripts',id));
+        await deleteDoc(doc(db, COLL, id));
         if (currentDocId === id){ currentDocId = null; currentName = ''; localStorage.removeItem('tp_doc_meta'); }
         showList();
       }catch(err){ console.error(err); alert('Delete failed.'); }
     }
   });
 
-  // Wire buttons
   saveBtn?.addEventListener('click', doSave);
   loadBtn?.addEventListener('click', showList);
   closeDlg?.addEventListener('click', ()=>dlg.close());
@@ -792,5 +674,23 @@ Press a letter key to jump that paragraph under the red guide.`;
     }
   }catch{}
 </script>
+
+<!--
+⚠️ FIRESTORE SECURITY RULES (Public collection)
+To make this work across devices without any auth or codes, set rules like:
+
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /publicScripts/{docId} {
+      allow read, list, get: if true;      // anyone can view/list
+      allow create, update, delete: if true; // anyone can write/delete
+    }
+  }
+}
+
+⚠️ This is PUBLIC. Anyone with the URL can see and modify scripts.
+If you want private-but-simple, use the "Access Code vault" version I shared earlier.
+-->
 </body>
 </html>
