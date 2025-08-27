@@ -1,735 +1,574 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="utf-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Teleprompter — Operator & Prompter (Paragraph Letters, Offline, Save/Load, Fullscreen)</title>
-<style>
-  :root{
-    --fontSize: 64px;
-    --padLRvw: 8;
-    --padTBpx: 0px;      /* top/bottom padding computed from viewer height */
-    --guideY: 35%;
-    --labelColEm: 2.2em; /* gutter width for A–Z labels */
-    --labelColor: #64b5f6; /* color for A–Z labels */
-  }
-  *{box-sizing:border-box}
-  html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
-  body{display:flex;flex-direction:column;min-height:100vh}
-
-  /* When UI is hidden, hide the topbar; viewer stays. */
-  body.ui-hidden .topbar{display:none}
-  /* Tiny restore pill appears only when hidden */
-  .ui-restore{position:fixed;top:10px;right:10px;z-index:9999;display:none}
-  body.ui-hidden .ui-restore{display:block}
-
-  .topbar{position:sticky;top:0;z-index:10;background:#0e0e0e;border-bottom:1px solid #222}
-  .topbar-inner{max-width:1400px;margin:0 auto;padding:12px 16px;display:grid;grid-template-columns:1fr auto;gap:12px}
-  .controls{display:grid;grid-template-columns:repeat(4, minmax(220px, 1fr));gap:10px 16px;align-items:center}
-  .controls label{display:flex;align-items:center;justify-content:space-between;gap:12px;font-size:14px;background:#0b0b0b;border:1px solid #222;border-radius:12px;padding:8px 10px}
-  .controls input[type="range"]{width:180px}
-  .muted{opacity:.75;font-size:12px}
-  .small{font-size:12px}
-
-  .actions{display:flex;flex-direction:column;gap:8px;align-items:flex-end}
-  .actions .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;justify-content:flex-end}
-  .toggles{display:flex;gap:16px;align-items:center;flex-wrap:wrap}
-  .toggle{display:flex;gap:10px;align-items:center;background:#0b0b0b;border:1px solid #222;border-radius:999px;padding:8px 12px;font-size:14px}
-  .toggle input{margin:0}
-
-  button{background:#1f1f1f;color:#fff;border:1px solid #333;border-radius:12px;padding:10px 14px;cursor:pointer}
-  button:hover{background:#262626}
-  .ui-pill{border-radius:999px;padding:8px 12px;border:1px solid #333;background:#121212}
-
-  .script-wrap{max-width:1400px;margin:0 auto;padding:0 16px 10px}
-  .script-wrap label{display:block;margin:6px 0 6px;font-size:12px;opacity:.9}
-  textarea{height:120px;width:100%;resize:vertical;background:#0a0a0a;color:#fff;border:1px solid #222;border-radius:10px;padding:10px}
-
-  .viewer{position:relative;overflow:auto;flex:1;border-top:1px solid #222}
-  .content{font-size:var(--fontSize);line-height:1.2;padding:var(--padTBpx) calc(var(--padLRvw)*1vw);white-space:pre-wrap;word-break:break-word}
-  .guide{position:absolute;left:0;right:0;height:2px;background:#f44336;top:var(--guideY);opacity:.8;pointer-events:none;z-index:2}
-  .kbd{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;background:#111;border:1px solid #333;border-radius:6px;padding:2px 6px}
-  .mirrorX{transform:scaleX(-1)}
-  .flipY{transform:scaleY(-1)}
-  .viewer:focus{outline:2px solid #2a7fff}
-
-  /* Paragraph label layout */
-  .content .para{
-    display:grid;
-    grid-template-columns: var(--labelColEm) 1fr;
-    column-gap: .6em;
-    align-items: baseline;
-    margin: .35em 0 .35em 0;
-  }
-  .content .label{
-    color: var(--labelColor);
-    text-align:right;
-    opacity: 1;
-    user-select:none;
-    font-weight:600;
-    letter-spacing:.03em;
-  }
-  .content .ptext{white-space:pre-wrap}
-
-  /* Load dialog */
-  dialog#loadDialog{border:1px solid #333;background:#0f0f0f;color:#fff;border-radius:16px;padding:0;max-width:640px;width:90%}
-  .dlg-head{padding:14px 16px;border-bottom:1px solid #222;display:flex;align-items:center;justify-content:space-between}
-  .dlg-body{padding:10px 16px;max-height:60vh;overflow:auto}
-  .dlg-foot{padding:12px 16px;border-top:1px solid #222;display:flex;justify-content:flex-end}
-  .saved-item{display:grid;grid-template-columns:1fr auto;gap:6px 12px;align-items:center;border:1px solid #222;border-radius:12px;padding:10px;margin:8px 0;background:#0b0b0b}
-  .saved-title{font-weight:600}
-  .saved-meta{font-size:12px;opacity:.8}
-  .saved-actions{display:flex;gap:8px;flex-wrap:wrap}
-</style>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Dual‑Window Teleprompter (Cloud Sync)</title>
+  <style>
+    :root{
+      --bg:#000; --fg:#fff; --ui:#0b0b0b; --ui2:#131313; --mut:#a0a0a0;
+      --fontPx:48; --lh:1.5; --col:60; --pad:6; --speed:90;
+    }
+    *{box-sizing:border-box}
+    html,body{height:100%}
+    body{margin:0;background:var(--ui);color:#eaeaea;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
+    header{position:sticky;top:0;z-index:20;background:var(--ui);border-bottom:1px solid #1e1e1e}
+    .wrap{max-width:1150px;margin:0 auto;padding:12px 16px}
+    .controls{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+    button{background:#1a1a1a;border:1px solid #2a2a2a;color:#eaeaea;border-radius:10px;padding:10px 14px;cursor:pointer;font-weight:600}
+    button:hover{background:#222;border-color:#3a3a3a}
+    .primary{background:#1d4228;border-color:#2b5d3a;color:#d7ffe1}
+    .primary:hover{background:#205230}
+    .ghost{background:#101010;border-color:#222}
+    .field{display:flex;gap:8px;align-items:center;padding:6px 10px;background:#101010;border:1px solid #222;border-radius:10px}
+    .field input[type="range"]{width:160px}
+    label{font-size:12px;color:#c8c8c8}
+    .muted{color:var(--mut)}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+    @media (max-width:1000px){.grid{grid-template-columns:1fr}}
+    textarea{width:100%;min-height:200px;background:#060606;color:#eaeaea;border:1px solid #1f1f1f;border-radius:12px;padding:12px;font-size:15px;line-height:1.4}
+    .viewerShell{height:60vh;background:#000;border:1px solid #1c1c1c;border-radius:16px;overflow:hidden}
+    .viewer{height:100%;overflow:auto;padding:6vh calc(var(--pad) * 1vw);background:var(--bg);color:var(--fg)}
+    .viewer::-webkit-scrollbar{width:12px}
+    .viewer::-webkit-scrollbar-thumb{background:#2b2b2b;border-radius:8px}
+    .prompt{margin:0 auto;max-width:calc(var(--col) * 1ch);font-size:calc(var(--fontPx) * 1px);line-height:var(--lh);letter-spacing:.02em;word-spacing:.08em}
+    details.dev{margin-top:10px;background:#0f0f0f;border:1px solid #1f1f1f;border-radius:10px}
+    details.dev summary{cursor:pointer;padding:8px 12px}
+    details.dev pre{margin:0;padding:12px;border-top:1px solid #1f1f1f;white-space:pre-wrap}
+    .row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    .spacer{flex:1}
+    input[type="file"]{display:none}
+    .tag{font-size:12px;padding:2px 6px;border:1px solid #2a2a2a;border-radius:8px;background:#121212;color:#cfcfcf}
+    input.inline{background:#0d0d0d;border:1px solid #242424;color:#eaeaea;border-radius:8px;padding:8px 10px}
+    .hint{font-size:12px;color:#bdbdbd}
+  </style>
 </head>
 <body>
-  <!-- Restore pill (only shows when UI is hidden) -->
-  <button id="restoreUIBtn" class="ui-restore ui-pill" title="Show tools (T)">Show Tools</button>
-
-  <!-- Sticky Top Toolbar -->
-  <div class="topbar">
-    <div class="topbar-inner">
-      <div>
-        <h2 style="margin:0;">Operator</h2>
-        <div class="muted small" id="instructions">
-          Keys: <span class="kbd">Space</span> autoscroll · <span class="kbd">↑/↓</span> nudge ·
-          <span class="kbd">G</span> guide · <span class="kbd">A–Z</span> jump to paragraph ·
-          <span class="kbd">T</span> tools · <span class="kbd">F</span> fullscreen · <span class="kbd">⌘/Ctrl+S</span> save
+  <header>
+    <div class="wrap">
+      <div class="controls">
+        <button id="openBtn" class="primary">Open Teleprompter Window</button>
+        <button id="playBtn">▶︎ Start</button>
+        <button id="pauseBtn">⏸︎ Pause</button>
+        <button id="topBtn">⟲ Top</button>
+        <button id="fsBtn">⤢ Fullscreen (Prompter)</button>
+        <div class="field"><label>Speed (px/s)</label>
+          <input type="range" id="speed" min="0" max="300" step="5" value="90"><span id="speedVal" class="muted">90</span>
+        </div>
+        <div class="field"><label>Font (px)</label>
+          <input type="range" id="font" min="24" max="120" step="2" value="48"><span id="fontVal" class="muted">48</span>
+        </div>
+        <div class="field"><label>Line Height</label>
+          <input type="range" id="lh" min="100" max="220" step="5" value="150"><span id="lhVal" class="muted">1.50</span>
+        </div>
+        <div class="field"><label>Column (ch)</label>
+          <input type="range" id="cw" min="30" max="80" step="1" value="60"><span id="cwVal" class="muted">60</span>
+        </div>
+        <div class="field"><label>Side Pad (vw)</label>
+          <input type="range" id="pad" min="0" max="20" step="1" value="6"><span id="padVal" class="muted">6</span>
+        </div>
+        <div class="field"><label>Flip Prompter</label>
+          <input type="checkbox" id="flipChk">
         </div>
       </div>
-      <div class="actions">
-        <div class="row">
-          <button id="openPrompter">Open Prompter Window</button>
-          <button id="fullscreenOp" class="ui-pill" title="F to toggle fullscreen">Fullscreen</button>
-          <button id="toggleUIBtn" class="ui-pill" title="T to toggle tools">Hide Tools</button>
-        </div>
-        <div class="toggles">
-          <label class="toggle"><input id="showGuide" type="checkbox" checked> Show Guide</label>
-          <label class="toggle"><input id="autoscroll" type="checkbox"> Autoscroll</label>
-          <label class="toggle"><input id="invertH" type="checkbox"> Mirror (Prompter only)</label>
-          <label class="toggle"><input id="invertV" type="checkbox"> Flip (Prompter only)</label>
-        </div>
+
+      <div class="row" style="margin-top:8px">
+        <button id="applyBtn" class="primary">Load to Preview & Prompter</button>
+        <span class="tag">Autosave: <span id="autosaveStatus">ON</span></span>
+        <div class="spacer"></div>
+        <button id="exportBtn" title="Download .prompt file">💾 Save to File</button>
+        <label class="btn ghost" for="importFile">📂 Load from File</label>
+        <input type="file" id="importFile" accept=".prompt,.json,.txt" />
+        <button id="clearLocalBtn" class="ghost" title="Clear local autosave">🗑️ Clear Local</button>
+      </div>
+
+      <div class="row" style="margin-top:10px">
+        <span class="tag">Cloud: <span id="cloudStatus">offline</span></span>
+        <input id="docId" class="inline" style="min-width:320px" placeholder="Cloud Doc ID" readonly>
+        <button id="newDocBtn" class="ghost">＋ New Cloud Doc</button>
+        <button id="saveCloudBtn" class="ghost">☁ Save to Cloud</button>
+        <button id="loadCloudBtn" class="ghost">☁ Load from Cloud</button>
+        <button id="linkBtn" class="ghost">🔗 Copy Share Link</button>
+        <label class="hint">Open link on another device for live sync</label>
+      </div>
+
+      <div class="muted" style="margin-top:6px">
+        Space: play/pause • ↑/↓: speed ±10 • Home: top • M: flip prompter • F: prompter fullscreen
       </div>
     </div>
+  </header>
 
-    <div class="topbar-inner" style="grid-template-columns:1fr;gap:10px 16px;">
-      <div class="controls" id="controls">
-        <label>Font Size <span style="display:flex;gap:10px;align-items:center"><input id="fontSize" type="range" min="20" max="160" value="64"><span id="fontSizeVal">64px</span></span></label>
-        <label>Side Margin <span style="display:flex;gap:10px;align-items:center"><input id="padLR" type="range" min="0" max="20" step="1" value="8"><span id="padLRVal">8vw</span></span></label>
-        <label>Guide Position <span style="display:flex;gap:10px;align-items:center"><input id="guidePos" type="range" min="5" max="90" value="35"><span id="guideVal">35%</span></span></label>
-        <label>Speed <span style="display:flex;gap:10px;align-items:center"><input id="speed" type="range" min="10" max="300" step="5" value="80"><span id="speedVal">80 px/s</span></span></label>
-      </div>
-    </div>
+  <main class="wrap">
+    <div class="grid" style="margin-top:14px">
+      <section>
+        <h3>Script</h3>
+        <textarea id="script" placeholder="Paste your script here...">WELCOME TO THE DUAL‑WINDOW TELEPROMPTER
 
-    <div class="script-wrap">
-      <label>Script</label>
-      <textarea id="script" placeholder="Type or paste your script here..."></textarea>
-      <div style="display:flex;gap:12px;align-items:center;justify-content:space-between;margin-top:6px">
-        <div style="display:flex;gap:8px;flex-wrap:wrap">
-          <button id="applyScript">Load to Preview & Prompter</button>
-          <button id="saveScript" title="Save/Update script in Firebase">💾 Save</button>
-          <button id="loadScript" title="Load a saved script">📂 Load</button>
+• Click “Open Teleprompter Window” and drag it to your extended display.
+• Use the controls to adjust speed, font, line height, and column width.
+• Toggle “Flip Prompter” to mirror only the external teleprompter.
+
+Pro tip: Press Space to Start/Pause, and M to flip the prompter.</textarea>
+      </section>
+      <section>
+        <h3>Operator Preview (manual scroll mirrors to prompter)</h3>
+        <div class="viewerShell">
+          <div id="viewer" class="viewer" tabindex="0">
+            <div id="prompt" class="prompt"></div>
+          </div>
         </div>
-        <span id="status" class="muted">–</span>
-      </div>
+      </section>
     </div>
-  </div>
 
-  <!-- Full-width Operator Preview -->
-  <div class="viewer" id="viewer" tabindex="0" aria-label="Operator preview (scroll area)">
-    <div class="guide" id="guide"></div>
-    <div class="content" id="content"></div>
-  </div>
+    <details class="dev">
+      <summary>Dev Self‑Tests (click to open)</summary>
+      <pre id="testLog">(will run automatically)</pre>
+    </details>
+  </main>
 
-  <!-- Load dialog -->
-  <dialog id="loadDialog">
-    <div class="dlg-head">
-      <strong>Saved Scripts</strong>
-      <button id="closeDialog">Close</button>
-    </div>
-    <div class="dlg-body">
-      <div id="savedList" class="saved-list"></div>
-    </div>
-    <div class="dlg-foot">
-      <span class="muted">Click “Load” to replace the current script.</span>
-    </div>
-  </dialog>
+  <!-- Firebase (module) -->
+  <script type="module">
+    import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-app.js';
+    import { getAuth, signInAnonymously, onAuthStateChanged } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-auth.js';
+    import { getFirestore, doc, setDoc, getDoc, onSnapshot, serverTimestamp } from 'https://www.gstatic.com/firebasejs/10.12.5/firebase-firestore.js';
 
-<script>
-/* ===== Teleprompter logic (Operator + Prompter HTML) ===== */
-(function(){
-  const state = { text:'', fontSize:64, padLR:8, padTB:0, guidePos:35, guideVisible:true, speed:80, autoscroll:false, invertH:false, invertV:false, scrollTop:0 };
+    const firebaseConfig = {
+      apiKey: "AIzaSyALVu4YBscEBpIGn0N__x6HdT4yHbWbi3Q",
+      authDomain: "teleprompter-1234b.firebaseapp.com",
+      projectId: "teleprompter-1234b",
+      storageBucket: "teleprompter-1234b.firebasestorage.app",
+      messagingSenderId: "63079515130",
+      appId: "1:63079515130:web:13d51e6f8aa62c4c0ada43"
+    };
 
-  const viewer = document.getElementById('viewer');
-  const content = document.getElementById('content');
-  const guide = document.getElementById('guide');
-  const scriptBox = document.getElementById('script');
-  const status = document.getElementById('status');
+    const app = initializeApp(firebaseConfig);
+    const auth = getAuth(app);
+    const db = getFirestore(app);
 
-  const fontSize = document.getElementById('fontSize'), fontSizeVal = document.getElementById('fontSizeVal');
-  const padLR = document.getElementById('padLR'), padLRVal = document.getElementById('padLRVal');
-  const guidePos = document.getElementById('guidePos'), guideVal = document.getElementById('guideVal');
-  const speed = document.getElementById('speed'), speedVal = document.getElementById('speedVal');
-  const showGuide = document.getElementById('showGuide');
-  const autoscroll = document.getElementById('autoscroll');
-  const invertH = document.getElementById('invertH');
-  const invertV = document.getElementById('invertV');
-  const openBtn = document.getElementById('openPrompter');
-  const applyBtn = document.getElementById('applyScript');
+    // Expose minimal cloud API to the main script via window
+    const Cloud = { auth, db, doc, setDoc, getDoc, onSnapshot, serverTimestamp };
+    window.__CLOUD__ = Cloud;
 
-  const toggleUIBtn   = document.getElementById('toggleUIBtn');
-  const restoreUIBtn  = document.getElementById('restoreUIBtn');
-  const fullscreenOp  = document.getElementById('fullscreenOp');
-
-  let prompterWin = null, pingTimer = null, autosTimer = null, isRemoteScroll = false;
-
-  /* Map letter -> paragraph element (operator) */
-  let labelMap = {};
-
-  /* Build labeled paragraphs into a container; returns {labelMap} */
-  function buildParagraphs(text, container){
-    container.innerHTML = '';
-    labelMap = {};
-    const normalized = (text || '').replace(/\r\n/g, '\n');
-    // Split by blank lines (one or more empty lines)
-    const paras = normalized.split(/\n\s*\n+/);
-    const MAX = 26;
-    const A = 'A'.charCodeAt(0);
-
-    for (let i = 0; i < paras.length; i++){
-      const raw = paras[i];
-      // Skip if the paragraph is truly empty (e.g., leading/trailing blanks)
-      if (!raw.trim() && i !== 0) continue;
-
-      const para = document.createElement('div');
-      para.className = 'para';
-      const label = (i < MAX) ? String.fromCharCode(A + i) : ''; // only A–Z
-      if (label){
-        para.setAttribute('data-label', label);
-        para.id = 'para-' + label;
+    // Anonymous sign-in
+    onAuthStateChanged(auth, (user)=>{
+      if (!user) {
+        signInAnonymously(auth).catch(console.error);
       }
-
-      const lbl = document.createElement('div');
-      lbl.className = 'label';
-      lbl.textContent = label || '';
-      const ptext = document.createElement('div');
-      ptext.className = 'ptext';
-      ptext.textContent = raw; // pre-wrap is handled by CSS
-
-      para.appendChild(lbl);
-      para.appendChild(ptext);
-      container.appendChild(para);
-
-      if (label) labelMap[label] = para;
-    }
-  }
-
-  // Convert padTB (in % of viewer height) to px and set CSS var
-  function updatePadTBpx(){
-    const h = viewer?.clientHeight || 0;
-    const px = h * (state.padTB/100);
-    document.documentElement.style.setProperty('--padTBpx', px + 'px');
-  }
-
-  // Show/Hide tools
-  function syncUIToggleLabel(){
-    const hidden = document.body.classList.contains('ui-hidden');
-    toggleUIBtn.textContent = hidden ? 'Show Tools' : 'Hide Tools';
-  }
-  function toggleUI(){
-    document.body.classList.toggle('ui-hidden');
-    syncUIToggleLabel();
-    updatePadTBpx(); // viewer height changes when topbar hides/shows
-  }
-  toggleUIBtn.addEventListener('click', toggleUI);
-  restoreUIBtn.addEventListener('click', toggleUI);
-
-  // Fullscreen for Operator
-  async function toggleFullscreen(){
-    try{
-      if (!document.fullscreenElement){
-        await document.documentElement.requestFullscreen();
-        fullscreenOp.textContent = 'Exit Fullscreen';
-      }else{
-        await document.exitFullscreen();
-        fullscreenOp.textContent = 'Fullscreen';
-      }
-    }catch(e){
-      console.warn('Fullscreen failed:', e);
-    }
-  }
-  fullscreenOp.addEventListener('click', toggleFullscreen);
-  document.addEventListener('fullscreenchange', ()=>{
-    fullscreenOp.textContent = document.fullscreenElement ? 'Exit Fullscreen' : 'Fullscreen';
-    updatePadTBpx(); // recalc after fullscreen change
-    broadcastState(); // keep child in sync
-  });
-
-  // Operator-side autoscroll (runs when prompter is NOT open)
-  function stopOpAuto(){ if(autosTimer){ cancelAnimationFrame(autosTimer); autosTimer=null; } }
-  function stepOp(){ const sp = state.speed || 0; let last = performance.now();
-    function tick(t){ const dt = (t - last) / 1000; last = t; viewer.scrollTop += sp * dt; state.scrollTop = viewer.scrollTop; send({type:'scroll', scrollTop: state.scrollTop}); autosTimer = requestAnimationFrame(tick); }
-    autosTimer = requestAnimationFrame(tick);
-  }
-  function manageAuto(){ stopOpAuto(); if(state.autoscroll){ if(!prompterWin || prompterWin.closed){ stepOp(); } } }
-
-  function render(){
-    // numeric UI
-    document.documentElement.style.setProperty('--fontSize', state.fontSize + 'px');
-    document.documentElement.style.setProperty('--padLRvw', state.padLR);
-    document.documentElement.style.setProperty('--guideY', state.guidePos + '%');
-    guide.style.display = state.guideVisible ? 'block' : 'none';
-    content.classList.remove('mirrorX','flipY'); // operator is never flipped
-    isRemoteScroll = true; viewer.scrollTop = state.scrollTop || 0; isRemoteScroll = false;
-
-    fontSize.value = state.fontSize; fontSizeVal.textContent = state.fontSize + 'px';
-    padLR.value = state.padLR; padLRVal.textContent = state.padLR + 'vw';
-    guidePos.value = state.guidePos; guideVal.textContent = state.guidePos + '%';
-    speed.value = state.speed; speedVal.textContent = state.speed + ' px/s';
-    showGuide.checked = state.guideVisible; autoscroll.checked = state.autoscroll; invertH.checked = state.invertH; invertV.checked = state.invertV;
-
-    // (re)build paragraphs with labels
-    buildParagraphs(state.text, content);
-
-    updatePadTBpx();
-  }
-
-  function send(msg){ if (prompterWin && !prompterWin.closed){ prompterWin.postMessage(msg, '*'); } }
-  function broadcastState(){ send({type:'state', state}); }
-
-  /* Jump so paragraph top aligns to guide line in THIS window */
-  function jumpToLabel(letter){
-    const L = (letter||'').toUpperCase();
-    const el = labelMap[L];
-    if (!el) return;
-    const guidePx = viewer.clientHeight * (state.guidePos/100);
-    const target = Math.max(0, el.offsetTop - guidePx);
-    viewer.scrollTop = target;
-    state.scrollTop = viewer.scrollTop;
-    // Tell prompter to do its own precise local jump
-    send({type:'jump', label: L});
-  }
-
-  function prompterHTML(){ return `<!DOCTYPE html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>Prompter</title>
-<style>
-:root{
-  --fontSize:${state.fontSize}px;
-  --padLRvw:${state.padLR};
-  --padTBpx:0px;
-  --guideY:${state.guidePos}%;
-  --labelColEm:2.2em;
-  --labelColor:#64b5f6;
-}
-html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
-.viewer{position:relative;height:100%;overflow:auto;border-top:1px solid #222}
-.content{font-size:var(--fontSize);line-height:1.2;padding:var(--padTBpx) calc(var(--padLRvw)*1vw);white-space:pre-wrap;word-break:break-word}
-.guide{position:absolute;top:var(--guideY);left:0;right:0;height:2px;background:#f44336;opacity:.8;pointer-events:none;z-index:2}
-.mirrorX{transform:scaleX(-1)}
-.flipY{transform:scaleY(-1)}
-/* Paragraph labels */
-.content .para{display:grid;grid-template-columns: var(--labelColEm) 1fr;column-gap:.6em;align-items:baseline;margin:.35em 0}
-.content .label{color:var(--labelColor);text-align:right;opacity:1;user-select:none;font-weight:600;letter-spacing:.03em}
-.content .ptext{white-space:pre-wrap}
-/* Floating fullscreen button in prompter window */
-.fs-fab{position:fixed;top:10px;right:10px;z-index:9999}
-.fs-pill{border-radius:999px;padding:8px 12px;border:1px solid #333;background:#121212;color:#fff}
-</style>
-</head><body>
-  <div class="viewer" id="v">
-    <div class="guide" id="g"></div>
-    <div class="content" id="c"></div>
-  </div>
-  <div class="fs-fab"><button id="fsBtnP" class="fs-pill" title="F to toggle fullscreen">Fullscreen</button></div>
-<script>(function(){
-  const viewer=document.getElementById('v'), content=document.getElementById('c'), guide=document.getElementById('g');
-  const fsBtn=document.getElementById('fsBtnP');
-  let state={text:'',fontSize:64,padLR:8,padTB:0,guidePos:35,guideVisible:true,speed:80,autoscroll:false,invertH:false,invertV:false,scrollTop:0};
-  let autosTimer=null, isRemoteScroll=false, suppressParent=false;
-  let labelMap = {};
-
-  function updatePadTBpx(){
-    const h = viewer?.clientHeight || 0;
-    const px = h * (state.padTB/100);
-    document.documentElement.style.setProperty('--padTBpx', px + 'px');
-  }
-
-  function buildParagraphs(text){
-    content.innerHTML='';
-    labelMap={};
-    const normalized=(text||'').replace(/\\r\\n/g,'\\n');
-    const paras=normalized.split(/\\n\\s*\\n+/);
-    const MAX=26, A='A'.charCodeAt(0);
-    for(let i=0;i<paras.length;i++){
-      const raw=paras[i];
-      if(!raw.trim() && i!==0) continue;
-      const para=document.createElement('div'); para.className='para';
-      const label=(i<MAX)?String.fromCharCode(A+i):'';
-      if(label){ para.setAttribute('data-label',label); para.id='p-'+label; }
-      const L=document.createElement('div'); L.className='label'; L.textContent=label||'';
-      const T=document.createElement('div'); T.className='ptext'; T.textContent=raw;
-      para.appendChild(L); para.appendChild(T); content.appendChild(para);
-      if(label) labelMap[label]=para;
-    }
-  }
-
-  function apply(){
-    document.documentElement.style.setProperty('--fontSize',state.fontSize+'px');
-    document.documentElement.style.setProperty('--padLRvw',state.padLR);
-    document.documentElement.style.setProperty('--guideY',state.guidePos+'%');
-    guide.style.display=state.guideVisible?'block':'none';
-    content.classList.toggle('mirrorX',!!state.invertH);
-    content.classList.toggle('flipY',!!state.invertV);
-    buildParagraphs(state.text);
-    updatePadTBpx();
-    isRemoteScroll=true; viewer.scrollTop=state.scrollTop||0; isRemoteScroll=false;
-    if(autosTimer){cancelAnimationFrame(autosTimer);autosTimer=null;}
-    if(state.autoscroll){ step(); }
-  }
-  function step(){
-    const sp=state.speed||0; let last=performance.now();
-    function tick(t){ const dt=(t-last)/1000; last=t; viewer.scrollTop+=sp*dt; if(!suppressParent){ window.parent && window.parent.postMessage({type:'scroll',scrollTop:viewer.scrollTop},'*'); } autosTimer=requestAnimationFrame(tick); }
-    autosTimer=requestAnimationFrame(tick);
-  }
-
-  // Local jump: align paragraph top to local guide
-  function jumpToLabel(letter){
-    const L=(letter||'').toUpperCase();
-    const el=labelMap[L]; if(!el) return;
-    const guidePx=viewer.clientHeight*(state.guidePos/100);
-    const target=Math.max(0, el.offsetTop - guidePx);
-    suppressParent=true;
-    viewer.scrollTop=target;
-    setTimeout(()=>{ suppressParent=false; }, 120);
-  }
-
-  // Fullscreen in prompter
-  async function toggleFS(){
-    try{
-      if (!document.fullscreenElement){
-        await document.documentElement.requestFullscreen();
-        fsBtn.textContent='Exit Fullscreen';
-      } else {
-        await document.exitFullscreen();
-        fsBtn.textContent='Fullscreen';
-      }
-    }catch(e){ console.warn('Prompter fullscreen failed:', e); }
-  }
-  fsBtn.addEventListener('click', toggleFS);
-  document.addEventListener('fullscreenchange', ()=>{ fsBtn.textContent = document.fullscreenElement ? 'Exit Fullscreen' : 'Fullscreen'; updatePadTBpx(); });
-
-  window.addEventListener('message',(e)=>{ const d=e.data||{};
-    if(d.type==='ping'){ window.parent && window.parent.postMessage({type:'pong'},'*'); }
-    else if(d.type==='state'){ state=d.state||state; apply(); }
-    else if(d.type==='scroll'){ isRemoteScroll=true; viewer.scrollTop=d.scrollTop||0; isRemoteScroll=false; }
-    else if(d.type==='jump'){ jumpToLabel(d.label); }
-  });
-  viewer.addEventListener('scroll',()=>{ if(isRemoteScroll || suppressParent) return; window.parent && window.parent.postMessage({type:'scroll',scrollTop:viewer.scrollTop},'*'); },{passive:true});
-  window.addEventListener('resize', updatePadTBpx);
-  window.parent && window.parent.postMessage({type:'ready'},'*');
-
-  // Shortcuts inside prompter (optional): F for fullscreen, A–Z for local jump
-  document.addEventListener('keydown',(e)=>{
-    if(e.key==='f' || e.key==='F'){ e.preventDefault(); toggleFS(); return; }
-    if(/^[a-zA-Z]$/.test(e.key)){ e.preventDefault(); jumpToLabel(e.key); }
-  });
-})();<\/script>
-</body></html>`; }
-
-  function openPrompter(){
-    status.textContent = 'Opening prompter…';
-    if (prompterWin && !prompterWin.closed){ try{prompterWin.close();}catch{} }
-    prompterWin = window.open('', 'TeleprompterWindow', 'popup=yes,width=1200,height=800');
-    if(!prompterWin){ alert('Pop-up blocked. Please allow pop-ups for this site.'); status.textContent='Popup blocked.'; return; }
-    prompterWin.document.open(); prompterWin.document.write(prompterHTML()); prompterWin.document.close();
-    if (pingTimer) clearInterval(pingTimer);
-    pingTimer = setInterval(()=>{ try{ if (prompterWin && !prompterWin.closed) prompterWin.postMessage({type:'ping'}, '*'); }catch{} }, 500);
-    setTimeout(()=>{ broadcastState(); status.textContent='Prompter ready.'; manageAuto(); }, 300);
-  }
-
-  openBtn.addEventListener('click', openPrompter);
-
-  // Apply button → updates preview + child
-  applyBtn.addEventListener('click', ()=>{ state.text = scriptBox.value; render(); broadcastState(); localStorage.setItem('tp_text', state.text); });
-
-  // Persist UI state locally (font/margins/etc.)
-  [fontSize,padLR,guidePos,speed].forEach(inp=>{
-    inp.addEventListener('input', ()=>{
-      state[inp.id==='fontSize'?'fontSize': inp.id==='padLR'?'padLR': inp.id==='guidePos'?'guidePos':'speed'] = +inp.value;
-      render(); broadcastState();
-      localStorage.setItem('tp_ui', JSON.stringify({fontSize:state.fontSize,padLR:state.padLR,guidePos:state.guidePos,speed:state.speed,guideVisible:state.guideVisible,padTB:state.padTB}));
-      manageAuto();
+      // main JS will pick user via window.__getUID()
     });
-  });
-  showGuide.addEventListener('change', ()=>{ state.guideVisible = showGuide.checked; render(); broadcastState(); localStorage.setItem('tp_ui', JSON.stringify({fontSize:state.fontSize,padLR:state.padLR,guidePos:state.guidePos,speed:state.speed,guideVisible:state.guideVisible,padTB:state.padTB})); });
-  autoscroll.addEventListener('change', ()=>{ state.autoscroll = autoscroll.checked; render(); broadcastState(); manageAuto(); });
-  invertH.addEventListener('change', ()=>{ state.invertH = invertH.checked; render(); broadcastState(); });
-  invertV.addEventListener('change', ()=>{ state.invertV = invertV.checked; render(); broadcastState(); });
 
-  // Scroll sync: operator -> prompter
-  viewer.addEventListener('scroll', ()=>{ if(isRemoteScroll) return; state.scrollTop = viewer.scrollTop; send({type:'scroll', scrollTop: state.scrollTop}); }, {passive:true});
+    window.__getUID = () => (auth && auth.currentUser ? auth.currentUser.uid : null);
+  </script>
 
-  // Keyboard controls + Letter jumps
-  function scrollBy(amount){ viewer.scrollTop = Math.max(0, viewer.scrollTop + amount); }
-  document.addEventListener('keydown', (e)=>{
-    const key = e.key;
-    const tag = (document.activeElement && document.activeElement.tagName) || '';
-    const typing = tag === 'TEXTAREA' || tag === 'INPUT' || document.activeElement?.isContentEditable;
-
-    const isMac = navigator.platform.toUpperCase().includes('MAC');
-    if ((isMac && e.metaKey && key.toLowerCase()==='s') || (!isMac && e.ctrlKey && key.toLowerCase()==='s')) { e.preventDefault(); document.dispatchEvent(new CustomEvent('tp-save')); return; }
-
-    if (/^[a-zA-Z]$/.test(key) && !typing){
-      e.preventDefault();
-      jumpToLabel(key);
-      return;
-    }
-
-    if (['ArrowUp','ArrowDown',' ','Spacebar','g','G','t','T','f','F'].includes(key)) e.preventDefault();
-    if (key==='ArrowUp') scrollBy(-60);
-    else if (key==='ArrowDown' || key==='Down') scrollBy(60);
-    else if (key===' ' || key==='Spacebar'){ autoscroll.checked = !autoscroll.checked; state.autoscroll = autoscroll.checked; render(); broadcastState(); manageAuto(); }
-    else if (key==='g' || key==='G'){ showGuide.checked = !showGuide.checked; state.guideVisible = showGuide.checked; render(); broadcastState(); }
-    else if (key==='t' || key==='T'){ if(!typing){ toggleUI(); } }
-    else if (key==='f' || key==='F'){ if(!typing){ toggleFullscreen(); } }
-  });
-
-  // Keep padding aligned on resize
-  window.addEventListener('resize', ()=>{ updatePadTBpx(); broadcastState(); });
-
-  // Rehydrate local cache
-  try{
-    const cachedText = localStorage.getItem('tp_text');
-    if (cachedText) { state.text = cachedText; scriptBox.value = cachedText; }
-    const cachedUI = localStorage.getItem('tp_ui');
-    if (cachedUI) {
-      const u = JSON.parse(cachedUI);
-      if (typeof u.fontSize==='number') state.fontSize=u.fontSize;
-      if (typeof u.padLR==='number') state.padLR=u.padLR;
-      if (typeof u.guidePos==='number') state.guidePos=u.guidePos;
-      if (typeof u.speed==='number') state.speed=u.speed;
-      if (typeof u.guideVisible==='boolean') state.guideVisible=u.guideVisible;
-      if (typeof u.padTB==='number') state.padTB=u.padTB;
-    }
-  }catch{}
-
-  // Initial text if none
-  if (!state.text) {
-    state.text = `A SHORT EXAMPLE
-
-Paste several paragraphs in the Script box above.
-
-Each blank line starts a new paragraph — the first 26 get A–Z.
-
-Press a letter key to jump that paragraph under the red guide.`;
-    scriptBox.value = state.text;
-  }
-
-  render(); manageAuto(); syncUIToggleLabel();
-})();
-</script>
-
-<!-- ===== Firebase: Offline + Save/Load/Rename/Duplicate ===== -->
-<script type="module">
-  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
-  import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-auth.js";
-  import {
-    getFirestore, collection, addDoc, getDocs, getDoc, doc, deleteDoc, updateDoc,
-    serverTimestamp, query, orderBy, where, enableIndexedDbPersistence
-  } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
-
-  const firebaseConfig = {
-    apiKey: "AIzaSyALVu4YBscEBpIGn0N__x6HdT4yHbWbi3Q",
-    authDomain: "teleprompter-1234b.firebaseapp.com",
-    projectId: "teleprompter-1234b",
-    storageBucket: "teleprompter-1234b.firebasestorage.app",
-    messagingSenderId: "63079515130",
-    appId: "1:63079515130:web:13d51e6f8aa62c4c0ada43"
+  <script>
+  // ================= Core State =================
+  const LS_KEY = 'dualTeleprompter.v1';
+  const state = {
+    text: '',
+    fontPx: 48,
+    lineHeight: 1.5,
+    colWidthCh: 60,
+    sidePadVw: 6,
+    speed: 90,
+    flipPrompter: false,
+    scrollTop: 0,
+    autosave: true,
+    cloud: { docId: null, live: true }
   };
 
-  const app = initializeApp(firebaseConfig);
-  const auth = getAuth(app);
-  const db   = getFirestore(app);
+  // ================= Elements =================
+  const $ = (id)=>document.getElementById(id);
+  const scriptEl = $('script'); // note: not used (reserved)
+  const promptEl = $('prompt');
+  const viewer   = $('viewer');
+  const openBtn  = $('openBtn');
+  const applyBtn = $('applyBtn');
+  const playBtn  = $('playBtn');
+  const pauseBtn = $('pauseBtn');
+  const topBtn   = $('topBtn');
+  const fsBtn    = $('fsBtn');
 
-  // Offline persistence for Firestore
-  try{
-    await enableIndexedDbPersistence(db);
-    console.log('Firestore persistence enabled.');
-  }catch(e){
-    console.warn('Persistence not available:', e?.code || e);
+  const speed    = $('speed');
+  const speedVal = $('speedVal');
+  const font     = $('font');
+  const fontVal  = $('fontVal');
+  const lh       = $('lh');
+  const lhVal    = $('lhVal');
+  const cw       = $('cw');
+  const cwVal    = $('cwVal');
+  const pad      = $('pad');
+  const padVal   = $('padVal');
+  const flipChk  = $('flipChk');
+  const testLog  = $('testLog');
+
+  const exportBtn= $('exportBtn');
+  const importFile = $('importFile');
+  const clearLocalBtn = $('clearLocalBtn');
+  const autosaveStatus = $('autosaveStatus');
+
+  const cloudStatus = $('cloudStatus');
+  const docIdInput = $('docId');
+  const newDocBtn = $('newDocBtn');
+  const saveCloudBtn = $('saveCloudBtn');
+  const loadCloudBtn = $('loadCloudBtn');
+  const linkBtn = $('linkBtn');
+
+  let prompterWin = null;
+  let pingTimer = null;
+  let dirtySinceSave = false;
+  let unsubscribe = null; // Firestore listener
+
+  // ================= Prompter Window HTML =================
+  function prompterHTML(){
+    return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Teleprompter</title>
+  <style>
+    :root{--bg:#000;--fg:#fff;--font:${state.fontPx}px;--lh:${state.lineHeight};--col:${state.colWidthCh}ch;--pad:${state.sidePadVw}vw}
+    html,body{height:100%}
+    body{margin:0;background:var(--bg);color:var(--fg);font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif;overflow:hidden}
+    #bar{position:fixed;inset:0 0 auto 0;background:#0b0b0bcc;color:#ddd;padding:6px 10px;font:12px/1.2 system-ui;display:flex;gap:8px;align-items:center}
+    #bar button{background:#111;border:1px solid #2a2a2a;color:#eee;border-radius:8px;padding:6px 10px;cursor:pointer}
+    #viewer{position:fixed;inset:32px 0 0 0;overflow:auto;background:#000;padding:6vh var(--pad)}
+    #text{margin:0 auto;max-width:var(--col);font-size:var(--font);line-height:var(--lh);letter-spacing:.02em;word-spacing:.08em;transform:scaleX(${state.flipPrompter ? -1 : 1});}
+  </style>
+</head>
+<body>
+  <div id="bar">
+    <button id="fs">⤢ Fullscreen</button>
+    <span style="opacity:.8">Keys: <b>M</b> flip • <b>Esc</b> exit FS</span>
+  </div>
+  <div id="viewer"><div id="text"></div></div>
+
+  <script>
+    let openerWin = window.opener;
+    const viewer = document.getElementById('viewer');
+    const text = document.getElementById('text');
+    const fsBtn = document.getElementById('fs');
+
+    function apply(st){
+      document.documentElement.style.setProperty('--font', st.fontPx + 'px');
+      document.documentElement.style.setProperty('--lh', st.lineHeight);
+      document.documentElement.style.setProperty('--col', st.colWidthCh + 'ch');
+      document.documentElement.style.setProperty('--pad', st.sidePadVw + 'vw');
+      text.style.transform = 'scaleX(' + (st.flipPrompter ? -1 : 1) + ')';
+      if (text.dataset.raw !== st.text){ text.dataset.raw = st.text; text.textContent = st.text; }
+      if (Math.abs(viewer.scrollTop - st.scrollTop) > 2){ viewer.scrollTop = st.scrollTop; }
+    }
+
+    window.addEventListener('message', (e)=>{
+      const msg = e.data||{};
+      if (msg.type === 'state') apply(msg.state);
+      if (msg.type === 'scroll') viewer.scrollTop = msg.scrollTop|0;
+      if (msg.type === 'fullscreen') document.documentElement.requestFullscreen?.();
+      if (msg.type === 'ping') try{ opener.postMessage({type:'pong'}, '*'); }catch{}
+    });
+
+    fsBtn.addEventListener('click', ()=>{ document.documentElement.requestFullscreen?.(); });
+    document.addEventListener('keydown', (e)=>{
+      if (e.key.toLowerCase()==='m') openerWin && openerWin.postMessage({type:'flipRequest'}, '*');
+    });
+
+    window.onload = ()=>{ try{ openerWin && openerWin.postMessage({type:'ready'}, '*'); }catch{} }
+  <\/script>
+</body></html>`;
   }
 
-  // Anonymous sign-in
-  await signInAnonymously(auth).catch(console.error);
-  let uid = null;
-  onAuthStateChanged(auth, (user)=>{ uid = user?.uid || null; });
+  // ================= Open Prompter (no document.write) =================
+  function openPrompter(){
+    const html = prompterHTML();
+    const blob = new Blob([html], { type: 'text/html' });
+    const url = URL.createObjectURL(blob);
+    prompterWin = window.open(url, 'TeleprompterWindow', 'popup=yes,width=1200,height=800');
+    if (!prompterWin){ alert('Pop‑up blocked. Please allow pop‑ups.'); return; }
 
-  // DOM
-  const saveBtn   = document.getElementById('saveScript');
-  const loadBtn   = document.getElementById('loadScript');
-  const applyBtn  = document.getElementById('applyScript');
-  const scriptBox = document.getElementById('script');
-  const dlg       = document.getElementById('loadDialog');
-  const listEl    = document.getElementById('savedList');
-  const closeDlg  = document.getElementById('closeDialog');
-  const statusEl  = document.getElementById('status');
-  const setStatus = (m)=>{ if(statusEl) statusEl.textContent = m; };
+    if (pingTimer) clearInterval(pingTimer);
+    pingTimer = setInterval(()=>{
+      try{ if (prompterWin && !prompterWin.closed) prompterWin.postMessage({type:'ping'}, '*'); }catch{}
+    }, 500);
 
-  // Track the currently loaded/edited doc
-  let currentDocId = null;
-  let currentName  = '';
+    setTimeout(()=>{ try{ URL.revokeObjectURL(url); }catch{} }, 5000);
+  }
 
-  // Allow Ctrl/Cmd+S from teleprompter script
-  document.addEventListener('tp-save', ()=>doSave());
-
-  // SAVE: update if loaded; else create
-  async function doSave(){
-    const text = scriptBox?.value || '';
-    const name = prompt('Enter a name for this script:', currentName || '');
-    if (name === null) return; // cancelled
-    const trimmed = (name || '').trim();
-    if (!trimmed) { alert('Please enter a valid name.'); return; }
-
-    try{
-      if (currentDocId) {
-        await updateDoc(doc(db,'scripts', currentDocId), {
-          name: trimmed, text, updatedAt: serverTimestamp()
-        });
-        currentName = trimmed;
-        setStatus?.(`Updated “${trimmed}”.`);
-      } else {
-        const ref = await addDoc(collection(db,'scripts'), {
-          name: trimmed, text, owner: uid || null,
-          createdAt: serverTimestamp(), updatedAt: serverTimestamp()
-        });
-        currentDocId = ref.id; currentName = trimmed;
-        setStatus?.(`Saved “${trimmed}”.`);
-      }
-
-      // Also cache locally for offline resilience
-      localStorage.setItem('tp_text', text);
-      localStorage.setItem('tp_doc_meta', JSON.stringify({id: currentDocId, name: currentName}));
-
-    }catch(err){
-      console.error(err);
-      alert('Save failed. See console for details.');
+  function send(type, payload){
+    if (prompterWin && !prompterWin.closed){
+      prompterWin.postMessage(Object.assign({type}, payload||{}), '*');
     }
   }
 
-  // LOAD LIST (uses your composite index: owner ASC, updatedAt DESC)
-  async function showList(){
-    dlg.showModal();
-    listEl.innerHTML = '<div class="muted">Loading…</div>';
-    try{
-      const qRef = uid
-        ? query(collection(db,'scripts'), where('owner','==',uid), orderBy('updatedAt','desc'))
-        : query(collection(db,'scripts'), orderBy('updatedAt','desc')); // fallback
-
-      const snap = await getDocs(qRef);
-      if (snap.empty){
-        listEl.innerHTML = '<div class="muted">No saved scripts yet.</div>';
-        return;
-      }
-      listEl.innerHTML = '';
-      snap.forEach(docSnap=>{
-        const d = docSnap.data();
-        const when = d.updatedAt?.toDate ? d.updatedAt.toDate().toLocaleString() : '';
-        const row = document.createElement('div');
-        row.className = 'saved-item';
-        row.innerHTML = `
-          <div>
-            <div class="saved-title">${d.name || '(untitled)'}</div>
-            <div class="saved-meta">${when}</div>
-          </div>
-          <div class="saved-actions">
-            <button data-id="${docSnap.id}" class="load">Load</button>
-            <button data-id="${docSnap.id}" class="rename">Rename</button>
-            <button data-id="${docSnap.id}" class="duplicate">Duplicate</button>
-            <button data-id="${docSnap.id}" class="delete">Delete</button>
-          </div>
-        `;
-        listEl.appendChild(row);
-      });
-    }catch(err){
-      console.error(err);
-      listEl.innerHTML = '<div class="muted">Failed to load list.</div>';
-    }
-  }
-
-  // LOAD / RENAME / DUPLICATE / DELETE
-  listEl?.addEventListener('click', async (e)=>{
-    const id = e.target?.dataset?.id;
-    if(!id) return;
-
-    if(e.target.classList.contains('load')){
-      try{
-        const ds = await getDoc(doc(db,'scripts',id));
-        if (ds.exists()){
-          const data = ds.data();
-          if (scriptBox) scriptBox.value = data.text || '';
-          currentDocId = id; currentName = data.name || '';
-          applyBtn?.click();
-          setStatus?.(`Loaded “${currentName || '(untitled)'}”.`);
-          localStorage.setItem('tp_doc_meta', JSON.stringify({id: currentDocId, name: currentName}));
-          dlg.close();
-        }
-      }catch(err){ console.error(err); alert('Load failed.'); }
-    }
-
-    if(e.target.classList.contains('rename')){
-      const ds = await getDoc(doc(db,'scripts',id));
-      if (!ds.exists()) return;
-      const oldName = ds.data().name || '';
-      const newName = prompt('Rename script to:', oldName);
-      if (newName === null) return;
-      const trimmed = (newName || '').trim();
-      if (!trimmed) return alert('Please enter a valid name.');
-      try{
-        await updateDoc(doc(db,'scripts',id), { name: trimmed, updatedAt: serverTimestamp() });
-        if (currentDocId === id) { currentName = trimmed; localStorage.setItem('tp_doc_meta', JSON.stringify({id: currentDocId, name: currentName})); }
-        showList();
-      }catch(err){ console.error(err); alert('Rename failed.'); }
-    }
-
-    if(e.target.classList.contains('duplicate')){
-      const ds = await getDoc(doc(db,'scripts',id));
-      if (!ds.exists()) return;
-      const d = ds.data();
-      const dupName = `${d.name || 'Copy'} (copy)`;
-      try{
-        await addDoc(collection(db,'scripts'), {
-          name: dupName, text: d.text || '', owner: uid || null,
-          createdAt: serverTimestamp(), updatedAt: serverTimestamp()
-        });
-        setStatus?.(`Duplicated as “${dupName}”.`);
-        showList();
-      }catch(err){ console.error(err); alert('Duplicate failed.'); }
-    }
-
-    if(e.target.classList.contains('delete')){
-      if(!confirm('Delete this saved script?')) return;
-      try{
-        await deleteDoc(doc(db,'scripts',id));
-        if (currentDocId === id){ currentDocId = null; currentName = ''; localStorage.removeItem('tp_doc_meta'); }
-        showList();
-      }catch(err){ console.error(err); alert('Delete failed.'); }
+  window.addEventListener('message', (e)=>{
+    if (e.source !== prompterWin) return;
+    const msg = e.data||{};
+    if (msg.type==='ready') send('state', {state});
+    if (msg.type==='pong')  send('state', {state});
+    if (msg.type==='flipRequest'){
+      state.flipPrompter = !state.flipPrompter; flipChk.checked = state.flipPrompter; pushVisuals(); send('state',{state});
     }
   });
 
-  // Wire buttons
-  saveBtn?.addEventListener('click', doSave);
-  loadBtn?.addEventListener('click', showList);
-  closeDlg?.addEventListener('click', ()=>dlg.close());
+  // ================= Visuals =================
+  function pushVisuals(){
+    document.documentElement.style.setProperty('--fontPx', state.fontPx);
+    document.documentElement.style.setProperty('--lh', state.lineHeight);
+    document.documentElement.style.setProperty('--col', state.colWidthCh);
+    document.documentElement.style.setProperty('--pad', state.sidePadVw);
+    document.documentElement.style.setProperty('--speed', state.speed);
+    $('prompt').textContent = state.text;
+    $('viewer').scrollTop = state.scrollTop|0;
+    markDirty();
+  }
 
-  // Rehydrate current doc meta if available
-  try{
-    const meta = localStorage.getItem('tp_doc_meta');
-    if (meta){
-      const m = JSON.parse(meta);
-      currentDocId = m.id || null;
-      currentName  = m.name || '';
-    }
-  }catch{}
-</script>
+  function pushState(){ send('state', {state}); }
+
+  // ================= Persistence (Local) =================
+  const scriptBox = document.querySelector('textarea#script');
+  function toPayload(){
+    return {
+      version: 1,
+      savedAt: new Date().toISOString(),
+      data: {
+        text: state.text,
+        fontPx: state.fontPx,
+        lineHeight: state.lineHeight,
+        colWidthCh: state.colWidthCh,
+        sidePadVw: state.sidePadVw,
+        speed: state.speed,
+        flipPrompter: state.flipPrompter
+      }
+    };
+  }
+  function fromPayload(p){
+    if (!p || !p.data) return;
+    const d = p.data;
+    state.text = String(d.text||'');
+    state.fontPx = +d.fontPx||48;
+    state.lineHeight = +d.lineHeight||1.5;
+    state.colWidthCh = +d.colWidthCh||60;
+    state.sidePadVw = +d.sidePadVw||6;
+    state.speed = +d.speed||90;
+    state.flipPrompter = !!d.flipPrompter;
+  }
+  function saveLocal(){
+    try{ localStorage.setItem(LS_KEY, JSON.stringify(toPayload())); $('autosaveStatus').textContent='ON'; }
+    catch(e){ console.warn('Local save failed', e); $('autosaveStatus').textContent='ERR'; }
+  }
+  function loadLocal(){
+    try{ const raw = localStorage.getItem(LS_KEY); if (!raw) return false; fromPayload(JSON.parse(raw)); return true; }
+    catch(e){ console.warn('Local load failed', e); return false; }
+  }
+  function exportFile(){
+    const blob = new Blob([JSON.stringify(toPayload(), null, 2)], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    const stamp = new Date().toISOString().replace(/[:.]/g,'-');
+    a.href = url; a.download = `teleprompter-${stamp}.prompt`; document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 2000);
+    dirtySinceSave = false;
+  }
+  async function importFromFile(file){
+    const text = await file.text();
+    let payload; try{ payload = JSON.parse(text); } catch{ payload = { data: { text } }; }
+    fromPayload(payload); applyControlsFromState(); pushVisuals(); pushState();
+  }
+
+  // ================= Cloud (Firestore) =================
+  const getUID = ()=> (window.__getUID ? window.__getUID() : null);
+  const cloudReady = ()=> !!(window.__CLOUD__ && window.__CLOUD__.db && getUID());
+  const idRandom = (n=12)=> Array.from(crypto.getRandomValues(new Uint8Array(n))).map(x=>('0'+(x%36).toString(36)).slice(-1)).join('');
+
+  function cloudDocRef(){
+    const C = window.__CLOUD__;
+    if (!C || !state.cloud.docId) return null;
+    return C.doc(C.db, 'scripts', state.cloud.docId);
+  }
+
+  async function saveCloud(){
+    if (!cloudReady()) return false;
+    const C = window.__CLOUD__;
+    const uid = getUID();
+    const ref = cloudDocRef();
+    if (!ref) return false;
+    const payload = toPayload();
+    payload.owner = uid; payload.updatedAt = C.serverTimestamp();
+    await C.setDoc(ref, payload, { merge: true });
+    dirtySinceSave = false; paintCloudStatus('saved');
+    return true;
+  }
+
+  async function loadCloud(){
+    if (!cloudReady()) return false;
+    const C = window.__CLOUD__;
+    const ref = cloudDocRef();
+    if (!ref) return false;
+    const snap = await C.getDoc(ref);
+    if (!snap.exists()) return false;
+    fromPayload(snap.data()); applyControlsFromState(); pushVisuals(); pushState();
+    paintCloudStatus('loaded');
+    return true;
+  }
+
+  function listenCloud(){
+    if (unsubscribe) { unsubscribe(); unsubscribe=null; }
+    const C = window.__CLOUD__;
+    const ref = cloudDocRef();
+    if (!ref) return;
+    unsubscribe = C.onSnapshot(ref, (snap)=>{
+      if (!snap.exists()) return;
+      const before = JSON.stringify(toPayload().data);
+      const incoming = snap.data();
+      // ignore our own immediate writes to avoid loops
+      if (incoming && incoming.data && JSON.stringify(incoming.data)!==before){
+        fromPayload(incoming); applyControlsFromState(); pushVisuals();
+      }
+    });
+  }
+
+  function paintCloudStatus(mode){
+    const uid = getUID();
+    $('cloudStatus').textContent = uid ? (mode? mode : 'online') : 'offline';
+    $('docId').value = state.cloud.docId || '';
+  }
+
+  function ensureDocId(){
+    const url = new URL(location.href);
+    const q = url.searchParams.get('doc');
+    if (q) state.cloud.docId = q;
+    if (!state.cloud.docId) state.cloud.docId = idRandom(12);
+    // write back to URL (no reload)
+    url.searchParams.set('doc', state.cloud.docId);
+    history.replaceState(null, '', url.toString());
+    paintCloudStatus();
+  }
+
+  function copyShareLink(){
+    const url = new URL(location.href);
+    url.searchParams.set('doc', state.cloud.docId);
+    navigator.clipboard.writeText(url.toString()).then(()=>{
+      linkBtn.textContent = '✅ Link Copied'; setTimeout(()=>linkBtn.textContent='🔗 Copy Share Link', 1200);
+    }).catch(()=>{
+      alert('Copy failed. You can manually copy from the address bar.');
+    });
+  }
+
+  function markDirty(){
+    dirtySinceSave = true; if (state.autosave) saveLocal();
+    // If cloud live sync and ready, debounce write
+    if (state.cloud.live && cloudReady())
+      debounceSaveCloud();
+  }
+
+  let cloudSaveTimer=null; function debounceSaveCloud(){
+    clearTimeout(cloudSaveTimer); cloudSaveTimer = setTimeout(()=>{ saveCloud(); }, 600);
+  }
+
+  // ================= Wiring =================
+  function applyControlsFromState(){
+    document.querySelector('#script').value = state.text;
+    font.value = state.fontPx; fontVal.textContent = state.fontPx;
+    lh.value = Math.round(state.lineHeight*100); lhVal.textContent = state.lineHeight.toFixed(2);
+    cw.value = state.colWidthCh; cwVal.textContent = state.colWidthCh;
+    pad.value = state.sidePadVw; padVal.textContent = state.sidePadVw;
+    speed.value = state.speed; speedVal.textContent = state.speed;
+    flipChk.checked = state.flipPrompter;
+  }
+
+  (function init(){
+    // Load local, then URL doc, then cloud
+    const ok = loadLocal();
+    if (!ok) state.text = document.querySelector('#script').value;
+    ensureDocId(); paintCloudStatus();
+    applyControlsFromState(); pushVisuals();
+
+    // Inputs
+    const relabel = ()=>{
+      speedVal.textContent = state.speed;
+      fontVal.textContent  = state.fontPx;
+      lhVal.textContent    = state.lineHeight.toFixed(2);
+      cwVal.textContent    = state.colWidthCh;
+      padVal.textContent   = state.sidePadVw;
+    };
+    const readAll = ()=>{
+      state.text        = document.querySelector('#script').value.replace(/\r\n?/g, '\n');
+      state.fontPx      = parseInt(font.value,10);
+      state.lineHeight  = parseInt(lh.value,10)/100;
+      state.colWidthCh  = parseInt(cw.value,10);
+      state.sidePadVw   = parseInt(pad.value,10);
+      state.speed       = parseInt(speed.value,10);
+      state.flipPrompter= !!flipChk.checked;
+    };
+
+    document.querySelector('#script').addEventListener('input', ()=>{ state.text = document.querySelector('#script').value; pushVisuals(); pushState(); });
+    ;[font,lh,cw,pad].forEach(inp=>inp.addEventListener('input', ()=>{ readAll(); relabel(); pushVisuals(); pushState(); }));
+    speed.addEventListener('input', ()=>{ state.speed = parseInt(speed.value,10); relabel(); pushVisuals(); });
+    flipChk.addEventListener('change', ()=>{ state.flipPrompter = flipChk.checked; pushState(); pushVisuals(); });
+
+    applyBtn.addEventListener('click', ()=>{ readAll(); pushVisuals(); pushState(); });
+    openBtn.addEventListener('click', ()=>{ openPrompter(); setTimeout(()=>{ readAll(); pushVisuals(); pushState(); }, 50); });
+    topBtn.addEventListener('click', ()=>{ state.scrollTop = 0; pushVisuals(); send('scroll',{scrollTop:0}); });
+    fsBtn.addEventListener('click', ()=>{ send('fullscreen'); });
+
+    // Persistence actions
+    exportBtn.addEventListener('click', exportFile);
+    importFile.addEventListener('change', (e)=>{ const f=e.target.files[0]; if (f) importFromFile(f); e.target.value=''; });
+    clearLocalBtn.addEventListener('click', ()=>{ localStorage.removeItem(LS_KEY); autosaveStatus.textContent='OFF'; });
+
+    // Cloud controls
+    newDocBtn.addEventListener('click', ()=>{ state.cloud.docId = idRandom(12); const url=new URL(location.href); url.searchParams.set('doc', state.cloud.docId); history.replaceState(null,'',url.toString()); paintCloudStatus(); listenCloud(); saveCloud(); });
+    saveCloudBtn.addEventListener('click', ()=> saveCloud());
+    loadCloudBtn.addEventListener('click', ()=> loadCloud());
+    linkBtn.addEventListener('click', copyShareLink);
+
+    // Start listening as soon as Firebase auth is ready
+    const waitAuth = setInterval(()=>{
+      if (cloudReady()){
+        clearInterval(waitAuth);
+        paintCloudStatus();
+        listenCloud();
+        // If there is a cloud doc and it's empty, push current; else pull
+        loadCloud().then(ok=>{ if(!ok) saveCloud(); });
+      }
+    }, 300);
+
+    // Warn on close if unsaved changes
+    window.addEventListener('beforeunload', (e)=>{ if (dirtySinceSave){ e.preventDefault(); e.returnValue=''; } });
+
+    // Self‑tests
+    setTimeout(runSelfTests, 0);
+  })();
+
+  // ================= Autoscroll =================
+  let playing=false, rafId=0, lastTs=0;
+  function setPlaying(v){ if (playing===v) return; playing=v; lastTs=0; playBtn.textContent = playing? '⏵ Playing' : '▶︎ Start'; if (playing) rafId = requestAnimationFrame(step); else cancelAnimationFrame(rafId); }
+  function togglePlay(){ setPlaying(!playing); }
+  function bumpSpeed(d){ state.speed = Math.max(0, Math.min(300, state.speed + d)); speed.value = state.speed; $('speedVal').textContent = state.speed; pushVisuals(); }
+  function step(ts){ if (!playing) return; if (!lastTs) lastTs = ts; const dt = (ts - lastTs)/1000; lastTs = ts; state.scrollTop = Math.min($('viewer').scrollHeight - $('viewer').clientHeight, state.scrollTop + state.speed * dt); $('viewer').scrollTop = state.scrollTop; send('scroll', {scrollTop: state.scrollTop}); rafId = requestAnimationFrame(step); }
+
+  // ================= Self‑Tests =================
+  function log(line){ $('testLog').textContent += ($('testLog').textContent ? '\n' : '') + line; }
+  function expect(name, cond){ log((cond? '✅':'❌') + ' ' + name + (cond?'':' — failed')); }
+  function runSelfTests(){
+    const html = prompterHTML();
+    expect('prompterHTML() returns a string', typeof html === 'string' && html.length > 100);
+    expect('Inner </script> is escaped', /<\\/script>/.test(html));
+    try{ const parser = new DOMParser(); const doc = parser.parseFromString(html, 'text/html'); expect('Contains #viewer', !!doc.getElementById('viewer')); expect('Contains #text', !!doc.getElementById('text')); }catch(e){ expect('DOMParser parse', false); }
+    try{ const src = openPrompter.toString(); expect('openPrompter uses Blob', /new Blob\(\[html\], \{ type: 'text\/html' \}\)/.test(src)); expect('openPrompter avoids document.write', !/document\.write/.test(src)); }catch(e){ expect('openPrompter introspection', false); }
+    expect('Cloud API injected', !!window.__CLOUD__);
+  }
+
+  // ================= Keyboard =================
+  document.addEventListener('keydown', (e)=>{
+    const tag = (e.target && e.target.tagName)||''; if (/INPUT|TEXTAREA/.test(tag)) return;
+    if (e.key === ' '){ e.preventDefault(); togglePlay(); }
+    else if (e.key === 'ArrowDown'){ e.preventDefault(); bumpSpeed(+10); }
+    else if (e.key === 'ArrowUp'){ e.preventDefault(); bumpSpeed(-10); }
+    else if (e.key === 'Home'){ e.preventDefault(); state.scrollTop = 0; pushVisuals(); send('scroll',{scrollTop:0}); }
+    else if (e.key.toLowerCase()==='m'){ state.flipPrompter = !state.flipPrompter; $('flipChk').checked = state.flipPrompter; pushState(); pushVisuals(); }
+    else if (e.key.toLowerCase()==='f'){ send('fullscreen'); }
+  });
+  
+  </script>
 </body>
 </html>
