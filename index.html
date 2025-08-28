@@ -3,14 +3,14 @@
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
-<title>Teleprompter — Public Cloud Save (A–Z Paragraphs, Mirror/Flip, Offline, Fullscreen)</title>
+<title>Teleprompter — Fixed Width & Font (Synced, Public Cloud Save)</title>
 <style>
   :root{
-    --fontSize: 64px;
-    --padLRvw: 8;
-    --padTBpx: 0px;      /* computed from viewer height */
+    --fontSize: 64px;        /* fixed px font size */
+    --colWidthPx: 1000px;    /* fixed content width */
+    --padTBpx: 0px;          /* computed from viewer height */
     --guideY: 35%;
-    --labelColEm: 2.2em; /* gutter for A–Z */
+    --labelColEm: 2.2em;     /* gutter for A–Z */
     --labelColor: #64b5f6;
   }
   *{box-sizing:border-box}
@@ -45,9 +45,16 @@
   textarea{height:120px;width:100%;resize:vertical;background:#0a0a0a;color:#fff;border:1px solid #222;border-radius:10px;padding:10px}
 
   .viewer{position:relative;overflow:auto;flex:1;border-top:1px solid #222}
-  .content{font-size:var(--fontSize);line-height:1.2;padding:var(--padTBpx) calc(var(--padLRvw)*1vw);white-space:pre-wrap;word-break:break-word}
+  .content{
+    font-size:var(--fontSize);
+    line-height:1.2;
+    padding:var(--padTBpx) 0;     /* no side padding; width is fixed */
+    width:var(--colWidthPx);
+    margin:0 auto;                /* center column */
+    white-space:pre-wrap;word-break:break-word
+  }
   .guide{position:absolute;left:0;right:0;height:2px;background:#f44336;top:var(--guideY);opacity:.8;pointer-events:none;z-index:2}
-  .kbd{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;background:#111;border:1px solid #333;border-radius:6px;padding:2px 6px}
+  .kbd{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,monospace;background:#111;border:1px solid #333;border-radius:6px;padding:2px 6px}
   .mirrorX{transform:scaleX(-1)}
   .flipY{transform:scaleY(-1)}
   .viewer:focus{outline:2px solid #2a7fff}
@@ -58,7 +65,7 @@
     grid-template-columns: var(--labelColEm) 1fr;
     column-gap: .6em;
     align-items: baseline;
-    margin: .35em 0 .35em 0;
+    margin: .35em 0;
   }
   .content .label{
     color: var(--labelColor);
@@ -113,7 +120,7 @@
     <div class="topbar-inner" style="grid-template-columns:1fr;gap:10px 16px;">
       <div class="controls" id="controls">
         <label>Font Size <span style="display:flex;gap:10px;align-items:center"><input id="fontSize" type="range" min="20" max="160" value="64"><span id="fontSizeVal">64px</span></span></label>
-        <label>Side Margin <span style="display:flex;gap:10px;align-items:center"><input id="padLR" type="range" min="0" max="20" step="1" value="8"><span id="padLRVal">8vw</span></span></label>
+        <label>Column Width <span style="display:flex;gap:10px;align-items:center"><input id="colWidth" type="range" min="600" max="1600" step="10" value="1000"><span id="colWidthVal">1000px</span></span></label>
         <label>Guide Position <span style="display:flex;gap:10px;align-items:center"><input id="guidePos" type="range" min="5" max="90" value="35"><span id="guideVal">35%</span></span></label>
         <label>Speed <span style="display:flex;gap:10px;align-items:center"><input id="speed" type="range" min="10" max="300" step="5" value="80"><span id="speedVal">80 px/s</span></span></label>
       </div>
@@ -154,11 +161,23 @@
   </dialog>
 
 <script>
-/* ===== Teleprompter logic (Operator + Prompter HTML) ===== */
+/* ===== Teleprompter logic (Operator authoritative; fixed width & font) ===== */
 (function(){
   const $ = (id)=>document.getElementById(id);
 
-  const state = { text:'', fontSize:64, padLR:8, padTB:0, guidePos:35, guideVisible:true, speed:80, autoscroll:false, invertH:false, invertV:false, scrollTop:0 };
+  const state = {
+    text:'',
+    fontSize:64,
+    colWidth:1000,      // px
+    padTB:0,            // % of viewer height
+    guidePos:35,
+    guideVisible:true,
+    speed:80,
+    autoscroll:false,
+    invertH:false,
+    invertV:false,
+    scrollTop:0
+  };
 
   const viewer = $('viewer');
   const content = $('content');
@@ -167,7 +186,7 @@
   const status = $('status');
 
   const fontSize = $('fontSize'), fontSizeVal = $('fontSizeVal');
-  const padLR = $('padLR'), padLRVal = $('padLRVal');
+  const colWidth = $('colWidth'), colWidthVal = $('colWidthVal');
   const guidePos = $('guidePos'), guideVal = $('guideVal');
   const speed = $('speed'), speedVal = $('speedVal');
   const showGuide = $('showGuide');
@@ -247,23 +266,32 @@
     broadcastState();
   });
 
+  /* ---- Autoscroll: Operator is the only scroller ---- */
   function stopOpAuto(){ if(autosTimer){ cancelAnimationFrame(autosTimer); autosTimer=null; } }
   function stepOp(){ const sp = state.speed || 0; let last = performance.now();
-    function tick(t){ const dt = (t - last) / 1000; last = t; viewer.scrollTop += sp * dt; state.scrollTop = viewer.scrollTop; send({type:'scroll', scrollTop: state.scrollTop}); autosTimer = requestAnimationFrame(tick); }
+    function tick(t){ const dt = (t - last) / 1000; last = t;
+      viewer.scrollTop += sp * dt;
+      state.scrollTop = viewer.scrollTop;
+      send({type:'scroll', scrollTop: state.scrollTop});   // prompter mirrors this
+      autosTimer = requestAnimationFrame(tick);
+    }
     autosTimer = requestAnimationFrame(tick);
   }
-  function manageAuto(){ stopOpAuto(); if(state.autoscroll){ if(!prompterWin || prompterWin.closed){ stepOp(); } } }
+  function manageAuto(){
+    stopOpAuto();
+    if(state.autoscroll){ stepOp(); }
+  }
 
   function render(){
     document.documentElement.style.setProperty('--fontSize', state.fontSize + 'px');
-    document.documentElement.style.setProperty('--padLRvw', state.padLR);
+    document.documentElement.style.setProperty('--colWidthPx', state.colWidth + 'px');
     document.documentElement.style.setProperty('--guideY', state.guidePos + '%');
     if (guide) guide.style.display = state.guideVisible ? 'block' : 'none';
-    if (content) content.classList.remove('mirrorX','flipY'); // operator is never flipped
+    if (content) content.classList.remove('mirrorX','flipY'); // operator stays unflipped
     isRemoteScroll = true; if (viewer) viewer.scrollTop = state.scrollTop || 0; isRemoteScroll = false;
 
     if (fontSize){ fontSize.value = state.fontSize; fontSizeVal.textContent = state.fontSize + 'px'; }
-    if (padLR){ padLR.value = state.padLR; padLRVal.textContent = state.padLR + 'vw'; }
+    if (colWidth){ colWidth.value = state.colWidth; colWidthVal.textContent = state.colWidth + 'px'; }
     if (guidePos){ guidePos.value = state.guidePos; guideVal.textContent = state.guidePos + '%'; }
     if (speed){ speed.value = state.speed; speedVal.textContent = state.speed + ' px/s'; }
     if (showGuide) showGuide.checked = !!state.guideVisible;
@@ -276,7 +304,10 @@
   }
 
   function send(msg){ if (prompterWin && !prompterWin.closed){ prompterWin.postMessage(msg, '*'); } }
-  function broadcastState(){ send({type:'state', state}); }
+  function broadcastState(){
+    const html = content ? content.innerHTML : '';
+    send({type:'state', state, html});
+  }
 
   function jumpToLabel(letter){
     const L = (letter||'').toUpperCase();
@@ -294,7 +325,7 @@
 <style>
 :root{
   --fontSize:${state.fontSize}px;
-  --padLRvw:${state.padLR};
+  --colWidthPx:${state.colWidth}px;
   --padTBpx:0px;
   --guideY:${state.guidePos}%;
   --labelColEm:2.2em;
@@ -302,7 +333,14 @@
 }
 html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,Segoe UI,Roboto,Helvetica,Arial,sans-serif}
 .viewer{position:relative;height:100%;overflow:auto;border-top:1px solid #222}
-.content{font-size:var(--fontSize);line-height:1.2;padding:var(--padTBpx) calc(var(--padLRvw)*1vw);white-space:pre-wrap;word-break:break-word}
+.content{
+  font-size:var(--fontSize);
+  line-height:1.2;
+  padding:var(--padTBpx) 0;
+  width:var(--colWidthPx);
+  margin:0 auto;
+  white-space:pre-wrap;word-break:break-word
+}
 .guide{position:absolute;top:var(--guideY);left:0;right:0;height:2px;background:#f44336;opacity:.8;pointer-events:none;z-index:2}
 .mirrorX{transform:scaleX(-1)}
 .flipY{transform:scaleY(-1)}
@@ -321,8 +359,7 @@ html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,
 <script>(function(){
   const viewer=document.getElementById('v'), content=document.getElementById('c'), guide=document.getElementById('g');
   const fsBtn=document.getElementById('fsBtnP');
-  let state={text:'',fontSize:64,padLR:8,padTB:0,guidePos:35,guideVisible:true,speed:80,autoscroll:false,invertH:false,invertV:false,scrollTop:0};
-  let autosTimer=null, isRemoteScroll=false, suppressParent=false;
+  let state={text:'',fontSize:64,colWidth:1000,padTB:0,guidePos:35,guideVisible:true,speed:80,autoscroll:false,invertH:false,invertV:false,scrollTop:0};
   let labelMap = {};
 
   function updatePadTBpx(){
@@ -330,55 +367,33 @@ html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,
     const px = h * (state.padTB/100);
     document.documentElement.style.setProperty('--padTBpx', px + 'px');
   }
-
-  function buildParagraphs(text){
-    content.innerHTML='';
-    labelMap={};
-    const normalized=(text||'').replace(/\\r\\n/g,'\\n');
-    const paras=normalized.split(/\\n\\s*\\n+/);
-    const MAX=26, A='A'.charCodeAt(0);
-    for(let i=0;i<paras.length;i++){
-      const raw=paras[i];
-      if(!raw.trim() && i!==0) continue;
-      const para=document.createElement('div'); para.className='para';
-      const label=(i<MAX)?String.fromCharCode(A+i):'';
-      if(label){ para.setAttribute('data-label',label); para.id='p-'+label; }
-      const L=document.createElement('div'); L.className='label'; L.textContent=label||'';
-      const T=document.createElement('div'); T.className='ptext'; T.textContent=raw;
-      para.appendChild(L); para.appendChild(T); content.appendChild(para);
-      if(label) labelMap[label]=para;
-    }
+  function rebuildLabelMap(){
+    labelMap = {};
+    content.querySelectorAll('.para[data-label]').forEach(el=>{
+      const L = el.getAttribute('data-label');
+      if (L) labelMap[L] = el;
+    });
   }
-
-  function apply(){
+  function apply(d){
+    if (d && d.state) state = d.state;
     document.documentElement.style.setProperty('--fontSize',state.fontSize+'px');
-    document.documentElement.style.setProperty('--padLRvw',state.padLR);
+    document.documentElement.style.setProperty('--colWidthPx',state.colWidth+'px');
     document.documentElement.style.setProperty('--guideY',state.guidePos+'%');
-    guide.style.display=state.guideVisible?'block':'none';
+    guide.style.display = state.guideVisible ? 'block' : 'none';
     content.classList.toggle('mirrorX',!!state.invertH);
     content.classList.toggle('flipY',!!state.invertV);
-    buildParagraphs(state.text);
+    if (d && typeof d.html==='string'){ content.innerHTML = d.html; }
     updatePadTBpx();
-    isRemoteScroll=true; viewer.scrollTop=state.scrollTop||0; isRemoteScroll=false;
-    if(autosTimer){cancelAnimationFrame(autosTimer);autosTimer=null;}
-    if(state.autoscroll){ step(); }
+    rebuildLabelMap();
+    viewer.scrollTop = state.scrollTop || 0;   // Operator decides scroll
   }
-  function step(){
-    const sp=state.speed||0; let last=performance.now();
-    function tick(t){ const dt=(t-last)/1000; last=t; viewer.scrollTop+=sp*dt; if(!suppressParent){ window.parent && window.parent.postMessage({type:'scroll',scrollTop:viewer.scrollTop},'*'); } autosTimer=requestAnimationFrame(tick); }
-    autosTimer=requestAnimationFrame(tick);
-  }
-
   function jumpToLabel(letter){
     const L=(letter||'').toUpperCase();
     const el=labelMap[L]; if(!el) return;
     const guidePx=viewer.clientHeight*(state.guidePos/100);
     const target=Math.max(0, el.offsetTop - guidePx);
-    suppressParent=true;
     viewer.scrollTop=target;
-    setTimeout(()=>{ suppressParent=false; }, 120);
   }
-
   async function toggleFS(){
     try{
       if (!document.fullscreenElement){
@@ -393,13 +408,13 @@ html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,
   fsBtn.addEventListener('click', toggleFS);
   document.addEventListener('fullscreenchange', ()=>{ fsBtn.textContent = document.fullscreenElement ? 'Exit Fullscreen' : 'Fullscreen'; updatePadTBpx(); });
 
+  // Operator is authoritative. We do not send scroll back.
   window.addEventListener('message',(e)=>{ const d=e.data||{};
     if(d.type==='ping'){ window.parent && window.parent.postMessage({type:'pong'},'*'); }
-    else if(d.type==='state'){ state=d.state||state; apply(); }
-    else if(d.type==='scroll'){ isRemoteScroll=true; viewer.scrollTop=d.scrollTop||0; isRemoteScroll=false; }
+    else if(d.type==='state'){ apply(d); }
+    else if(d.type==='scroll'){ viewer.scrollTop = d.scrollTop || 0; }
     else if(d.type==='jump'){ jumpToLabel(d.label); }
   });
-  viewer.addEventListener('scroll',()=>{ if(isRemoteScroll || suppressParent) return; window.parent && window.parent.postMessage({type:'scroll',scrollTop:viewer.scrollTop},'*'); },{passive:true});
   window.addEventListener('resize', updatePadTBpx);
   window.parent && window.parent.postMessage({type:'ready'},'*');
 
@@ -421,27 +436,36 @@ html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,
     setTimeout(()=>{ broadcastState(); if(status) status.textContent='Prompter ready.'; manageAuto(); }, 300);
   }
 
-  openBtn?.addEventListener('click', openPrompter);
+  $('openPrompter')?.addEventListener('click', openPrompter);
 
-  applyBtn?.addEventListener('click', ()=>{ state.text = scriptBox?.value || ''; render(); broadcastState(); try{ localStorage.setItem('tp_text', state.text); }catch{} });
+  $('applyScript')?.addEventListener('click', ()=>{
+    state.text = scriptBox?.value || '';
+    render(); broadcastState();
+    try{ localStorage.setItem('tp_text', state.text); }catch{}
+  });
 
-  [fontSize,padLR,guidePos,speed].forEach(inp=>{
+  [fontSize,colWidth,guidePos,speed].forEach(inp=>{
     inp?.addEventListener('input', ()=>{
       if (!inp) return;
-      state[inp.id==='fontSize'?'fontSize': inp.id==='padLR'?'padLR': inp.id==='guidePos'?'guidePos':'speed'] = +inp.value;
+      if (inp.id==='fontSize') state.fontSize = +inp.value;
+      else if (inp.id==='colWidth') state.colWidth = +inp.value;
+      else if (inp.id==='guidePos') state.guidePos = +inp.value;
+      else state.speed = +inp.value;
+
       render(); broadcastState();
-      try{ localStorage.setItem('tp_ui', JSON.stringify({fontSize:state.fontSize,padLR:state.padLR,guidePos:state.guidePos,speed:state.speed,guideVisible:state.guideVisible,padTB:state.padTB})); }catch{}
-      manageAuto();
+      try{ localStorage.setItem('tp_ui', JSON.stringify({fontSize:state.fontSize,colWidth:state.colWidth,guidePos:state.guidePos,speed:state.speed,guideVisible:state.guideVisible,padTB:state.padTB})); }catch{}
+      if (inp.id==='speed') manageAuto();
     });
   });
-  showGuide?.addEventListener('change', ()=>{ state.guideVisible = !!showGuide.checked; render(); broadcastState(); try{ localStorage.setItem('tp_ui', JSON.stringify({fontSize:state.fontSize,padLR:state.padLR,guidePos:state.guidePos,speed:state.speed,guideVisible:state.guideVisible,padTB:state.padTB})); }catch{} });
+  showGuide?.addEventListener('change', ()=>{ state.guideVisible = !!showGuide.checked; render(); broadcastState(); try{ localStorage.setItem('tp_ui', JSON.stringify({fontSize:state.fontSize,colWidth:state.colWidth,guidePos:state.guidePos,speed:state.speed,guideVisible:state.guideVisible,padTB:state.padTB})); }catch{} });
   autoscroll?.addEventListener('change', ()=>{ state.autoscroll = !!autoscroll.checked; render(); broadcastState(); manageAuto(); });
   invertH?.addEventListener('change', ()=>{ state.invertH = !!invertH.checked; render(); broadcastState(); });
   invertV?.addEventListener('change', ()=>{ state.invertV = !!invertV.checked; render(); broadcastState(); });
 
   viewer?.addEventListener('scroll', ()=>{ if(isRemoteScroll) return; state.scrollTop = viewer.scrollTop; send({type:'scroll', scrollTop: state.scrollTop}); }, {passive:true});
 
-  function scrollBy(amount){ if (!viewer) return; viewer.scrollTop = Math.max(0, viewer.scrollTop + amount); }
+  function scrollBy(amount){ if (!viewer) return; viewer.scrollTop = Math.max(0, viewer.scrollTop + amount); state.scrollTop = viewer.scrollTop; send({type:'scroll', scrollTop: state.scrollTop}); }
+
   document.addEventListener('keydown', (e)=>{
     const key = e.key;
     const tag = (document.activeElement && document.activeElement.tagName) || '';
@@ -463,31 +487,19 @@ html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,
 
   window.addEventListener('resize', ()=>{ updatePadTBpx(); broadcastState(); });
 
+  // Preload ONLY UI (not text). Start blank.
   try{
-    const cachedText = localStorage.getItem('tp_text');
-    if (cachedText && scriptBox) { state.text = cachedText; scriptBox.value = cachedText; }
     const cachedUI = localStorage.getItem('tp_ui');
     if (cachedUI) {
       const u = JSON.parse(cachedUI);
       if (typeof u.fontSize==='number') state.fontSize=u.fontSize;
-      if (typeof u.padLR==='number') state.padLR=u.padLR;
+      if (typeof u.colWidth==='number') state.colWidth=u.colWidth;
       if (typeof u.guidePos==='number') state.guidePos=u.guidePos;
       if (typeof u.speed==='number') state.speed=u.speed;
       if (typeof u.guideVisible==='boolean') state.guideVisible=u.guideVisible;
       if (typeof u.padTB==='number') state.padTB=u.padTB;
     }
   }catch{}
-
-  if (!state.text && scriptBox) {
-    state.text = `A SHORT EXAMPLE
-
-Paste several paragraphs in the Script box above.
-
-Each blank line starts a new paragraph — the first 26 get A–Z.
-
-Press a letter key to jump that paragraph under the red guide.`;
-    scriptBox.value = state.text;
-  }
 
   render(); manageAuto(); syncUIToggleLabel();
 })();
@@ -501,7 +513,7 @@ Press a letter key to jump that paragraph under the red guide.`;
     serverTimestamp, query, orderBy, enableIndexedDbPersistence
   } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
 
-  /* >>> NEW Firebase config (teleprompter2-81070) <<< */
+  /* Firebase config (teleprompter2-81070) */
   const firebaseConfig = {
     apiKey: "AIzaSyCko9ZyO8_Ez3jq_LqYehSjwe_yuieCZm0",
     authDomain: "teleprompter2-81070.firebaseapp.com",
@@ -513,16 +525,6 @@ Press a letter key to jump that paragraph under the red guide.`;
 
   const app = initializeApp(firebaseConfig);
   const db   = getFirestore(app);
-
-  // Remember project to reset stale doc meta when switching projects
-  try{
-    const PROJECT_ID = firebaseConfig.projectId;
-    const prev = localStorage.getItem('tp_project_id');
-    if (prev && prev !== PROJECT_ID){
-      localStorage.removeItem('tp_doc_meta');
-    }
-    localStorage.setItem('tp_project_id', PROJECT_ID);
-  }catch{}
 
   // Optional offline cache
   try{ await enableIndexedDbPersistence(db); }catch(e){ console.warn('Persistence not available:', e?.code || e); }
@@ -545,17 +547,6 @@ Press a letter key to jump that paragraph under the red guide.`;
   let currentDocId = null;
   let currentName  = '';
 
-  // Rehydrate doc meta if available (but may be stale after project switch guard above)
-  try{
-    const meta = localStorage.getItem('tp_doc_meta');
-    if (meta){
-      const m = JSON.parse(meta);
-      currentDocId = m.id || null;
-      currentName  = m.name || '';
-    }
-  }catch{}
-
-  // Allow Ctrl/Cmd+S from teleprompter script
   document.addEventListener('tp-save', ()=>doSave());
 
   async function doSave(){
@@ -577,7 +568,6 @@ Press a letter key to jump that paragraph under the red guide.`;
             didUpdate = true;
           }
         }catch(e){
-          // if update path fails, we'll fall back to create
           console.warn('Update path failed; will create new.', e);
         }
       }
@@ -691,7 +681,11 @@ Press a letter key to jump that paragraph under the red guide.`;
       if(!confirm('Delete this saved script?')) return;
       try{
         await deleteDoc(doc(db, COLL, id));
-        if (currentDocId === id){ currentDocId = null; currentName = ''; try{ localStorage.removeItem('tp_doc_meta'); }catch{} }
+        const meta = localStorage.getItem('tp_doc_meta');
+        if (meta){
+          const m = JSON.parse(meta);
+          if (m.id === id){ localStorage.removeItem('tp_doc_meta'); }
+        }
         showList();
       }catch(err){ console.error(err); alert('Delete failed.'); }
     }
