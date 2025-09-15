@@ -298,7 +298,7 @@ html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,
 .fs-fab{position:fixed;top:10px;right:10px;z-index:9999}
 .fs-pill{border-radius:999px;padding:8px 12px;border:1px solid #333;background:#121212;color:#fff}
 
-/* One-tap FS overlay */
+/* One-tap FS overlay (used when armed from Operator) */
 #fsOverlay{
   position:fixed;inset:0;background:rgba(0,0,0,.6);display:none;align-items:center;justify-content:center;z-index:9998;
   font-size:22px;text-align:center;padding:24px
@@ -384,6 +384,11 @@ html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,
   }
   fsBtn.addEventListener('click', toggleFS);
 
+  /* NEW: first click anywhere enters fullscreen (one-time) */
+  document.addEventListener('pointerdown', ()=>{
+    if (!hasFS()) { toggleFS(); }
+  }, { once: true });
+
   document.addEventListener('fullscreenchange', ()=>{
     const on = hasFS();
     fsBtn.textContent = on ? 'Exit Fullscreen' : 'Fullscreen';
@@ -393,15 +398,14 @@ html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,
     updatePadTBpx();
   });
 
-  // One-tap arming: operator asks us to arm, next click enters FS
+  // One-tap arming (from Operator button fallback)
   function armFS(){
     fsArmed = true;
     fsOverlay.style.display = 'flex';
   }
   document.addEventListener('pointerdown', ()=>{
     if (fsArmed && !hasFS()){
-      toggleFS();
-      // overlay is hidden by fullscreenchange
+      toggleFS(); // overlay hidden by fullscreenchange
     }
   });
 
@@ -525,7 +529,7 @@ html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,
     send({type:'jump', label: L});
   }
 
-  document.getElementById('applyScript')?.addEventListener('click', ()=>{
+  applyBtn?.addEventListener('click', ()=>{
     state.text = scriptBox?.value || '';
     render(); broadcastState();
     try{ localStorage.setItem('tp_text', state.text); }catch{}
@@ -584,6 +588,9 @@ html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,
     }
   });
 
+  // Open prompter
+  document.getElementById('openPrompter')?.addEventListener('click', openPrompter);
+
   // Preload ONLY UI (not text). Start blank.
   try{
     const cachedUI = localStorage.getItem('tp_ui');
@@ -597,9 +604,6 @@ html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,
       if (typeof u.padTB==='number') state.padTB=u.padTB;
     }
   }catch{}
-
-  // Open prompter button
-  document.getElementById('openPrompter')?.addEventListener('click', openPrompter);
 
   render(); manageAuto(); syncUIToggleLabel();
 })();
