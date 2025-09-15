@@ -450,4 +450,309 @@ html,body{height:100%;margin:0;background:#000;color:#fff;font-family:system-ui,
     else if(d.type==='jump'){ jumpToLabel(d.label); }
     else if(d.type==='toggleFS'){ toggleFS(); }
   });
-  window.addEventListener('resize',
+  window.addEventListener('resize', updatePadTBpx);
+  window.parent && window.parent.postMessage({type:'ready'},'*');
+
+  document.addEventListener('keydown',(e)=>{
+    if(e.key==='f' || e.key==='F'){ e.preventDefault(); toggleFS(); return; }
+    if(/^[a-zA-Z]$/.test(e.key)){ e.preventDefault(); jumpToLabel(e.key); }
+  });
+})();<\/script>
+</body></html>`; }
+
+  function openPrompter(){
+    if (status) status.textContent = 'Opening prompter…';
+    if (prompterWin && !prompterWin.closed){ try{prompterWin.close();}catch{} }
+    prompterWin = window.open('', 'TeleprompterWindow', 'popup=yes,width=1200,height=800');
+    if(!prompterWin){ alert('Pop-up blocked. Please allow pop-ups for this site.'); if(status) status.textContent='Popup blocked.'; return; }
+    prompterWin.document.open(); prompterWin.document.write(prompterHTML()); prompterWin.document.close();
+    if (pingTimer) clearInterval(pingTimer);
+    pingTimer = setInterval(()=>{ try{ if (prompterWin && !prompterWin.closed) prompterWin.postMessage({type:'ping'}, '*'); }catch{} }, 500);
+    setTimeout(()=>{ broadcastState(); if(status) status.textContent='Prompter ready.'; manageAuto(); setPrompterFSLabel(false); }, 300);
+  }
+
+  $('openPrompter')?.addEventListener('click', openPrompter);
+
+  $('applyScript')?.addEventListener('click', ()=>{
+    state.text = scriptBox?.value || '';
+    render(); broadcastState();
+    // keep storing locally if you want quick back/forward, but we do NOT preload on startup
+    try{ localStorage.setItem('tp_text', state.text); }catch{}
+  });
+
+  [fontSize,colWidth,guidePos,speed].forEach(inp=>{
+    inp?.addEventListener('input', ()=>{
+      if (!inp) return;
+      if (inp.id==='fontSize') state.fontSize = +inp.value;
+      else if (inp.id==='colWidth') state.colWidth = +inp.value;
+      else if (inp.id==='guidePos') state.guidePos = +inp.value;
+      else state.speed = +inp.value;
+
+      render(); broadcastState();
+      try{ localStorage.setItem('tp_ui', JSON.stringify({fontSize:state.fontSize,colWidth:state.colWidth,guidePos:state.guidePos,speed:state.speed,guideVisible:state.guideVisible,padTB:state.padTB})); }catch{}
+      if (inp.id==='speed') manageAuto();
+    });
+  });
+  showGuide?.addEventListener('change', ()=>{ state.guideVisible = !!showGuide.checked; render(); broadcastState(); try{ localStorage.setItem('tp_ui', JSON.stringify({fontSize:state.fontSize,colWidth:state.colWidth,guidePos:state.guidePos,speed:state.speed,guideVisible:state.guideVisible,padTB:state.padTB})); }catch{} });
+  autoscroll?.addEventListener('change', ()=>{ state.autoscroll = !!autoscroll.checked; render(); broadcastState(); manageAuto(); });
+  invertH?.addEventListener('change', ()=>{ state.invertH = !!invertH.checked; render(); broadcastState(); });
+  invertV?.addEventListener('change', ()=>{ state.invertV = !!invertV.checked; render(); broadcastState(); });
+
+  viewer?.addEventListener('scroll', ()=>{ if(isRemoteScroll) return; state.scrollTop = viewer.scrollTop; send({type:'scroll', scrollTop: state.scrollTop}); }, {passive:true});
+
+  function scrollBy(amount){ if (!viewer) return; viewer.scrollTop = Math.max(0, viewer.scrollTop + amount); state.scrollTop = viewer.scrollTop; send({type:'scroll', scrollTop: state.scrollTop}); }
+
+  document.addEventListener('keydown', (e)=>{
+    const key = e.key;
+    const tag = (document.activeElement && document.activeElement.tagName) || '';
+    const typing = tag === 'TEXTAREA' || tag === 'INPUT' || document.activeElement?.isContentEditable;
+
+    const isMac = navigator.platform.toUpperCase().includes('MAC');
+    if ((isMac && e.metaKey && key.toLowerCase()==='s') || (!isMac && e.ctrlKey && key.toLowerCase()==='s')) { e.preventDefault(); document.dispatchEvent(new CustomEvent('tp-save')); return; }
+
+    if (/^[a-zA-Z]$/.test(key) && !typing){ e.preventDefault(); jumpToLabel(key); return; }
+
+    if (['ArrowUp','ArrowDown',' ','Spacebar','g','G','t','T','f','F'].includes(key)) e.preventDefault();
+    if (key==='ArrowUp') scrollBy(-60);
+    else if (key==='ArrowDown' || key==='Down') scrollBy(60);
+    else if (key===' ' || key==='Spacebar'){ if (autoscroll){ autoscroll.checked = !autoscroll.checked; state.autoscroll = autoscroll.checked; render(); broadcastState(); manageAuto(); } }
+    else if (key==='g' || key==='G'){ if (showGuide){ showGuide.checked = !showGuide.checked; state.guideVisible = showGuide.checked; render(); broadcastState(); } }
+    else if (key==='t' || key==='T'){ if(!typing){ toggleUI(); } }
+    else if (key==='f' || key==='F'){ if(!typing){ toggleFullscreen(); } }
+  });
+
+  window.addEventListener('resize', ()=>{ updatePadTBpx(); broadcastState(); });
+
+  // Listen for child messages (fullscreen state updates, ready)
+  window.addEventListener('message', (e)=>{
+    const d = e.data || {};
+    if (d.type === 'prompter-fs'){
+      setPrompterFSLabel(!!d.on);
+    } else if (d.type === 'ready'){
+      broadcastState();
+    }
+  });
+
+  // Preload ONLY UI (not text). Start blank.
+  try{
+    const cachedUI = localStorage.getItem('tp_ui');
+    if (cachedUI) {
+      const u = JSON.parse(cachedUI);
+      if (typeof u.fontSize==='number') state.fontSize=u.fontSize;
+      if (typeof u.colWidth==='number') state.colWidth=u.colWidth;
+      if (typeof u.guidePos==='number') state.guidePos=u.guidePos;
+      if (typeof u.speed==='number') state.speed=u.speed;
+      if (typeof u.guideVisible==='boolean') state.guideVisible=u.guideVisible;
+      if (typeof u.padTB==='number') state.padTB=u.padTB;
+    }
+  }catch{}
+
+  render(); manageAuto(); syncUIToggleLabel();
+})();
+</script>
+
+<!-- ===== Firebase: PUBLIC Save/Load (no login, no code) ===== -->
+<script type="module">
+  import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-app.js";
+  import {
+    getFirestore, collection, addDoc, getDocs, getDoc, doc, deleteDoc, updateDoc,
+    serverTimestamp, query, orderBy, enableIndexedDbPersistence
+  } from "https://www.gstatic.com/firebasejs/10.12.3/firebase-firestore.js";
+
+  /* Firebase config (teleprompter2-81070) */
+  const firebaseConfig = {
+    apiKey: "AIzaSyCko9ZyO8_Ez3jq_LqYehSjwe_yuieCZm0",
+    authDomain: "teleprompter2-81070.firebaseapp.com",
+    projectId: "teleprompter2-81070",
+    storageBucket: "teleprompter2-81070.firebasestorage.app",
+    messagingSenderId: "657511168839",
+    appId: "1:657511168839:web:6bf1bf8339fd4a27c0ea62"
+  };
+
+  const app = initializeApp(firebaseConfig);
+  const db   = getFirestore(app);
+
+  // Optional offline cache
+  try{ await enableIndexedDbPersistence(db); }catch(e){ console.warn('Persistence not available:', e?.code || e); }
+
+  const COLL = 'publicScripts'; // public collection
+
+  // DOM
+  const $ = (id)=>document.getElementById(id);
+  const saveBtn   = $('saveScript');
+  const loadBtn   = $('loadScript');
+  const applyBtn  = $('applyScript');
+  const scriptBox = $('script');
+  const dlg       = $('loadDialog');
+  const listEl    = $('savedList');
+  const closeDlg  = $('closeDialog');
+  const statusEl  = $('status');
+  const setStatus = (m)=>{ if(statusEl) statusEl.textContent = m; };
+
+  // Track current doc to allow update vs create
+  let currentDocId = null;
+  let currentName  = '';
+
+  document.addEventListener('tp-save', ()=>doSave());
+
+  async function doSave(){
+    const text = scriptBox?.value || '';
+    const name = prompt('Enter a name for this script:', currentName || '');
+    if (name === null) return;
+    const trimmed = (name || '').trim();
+    if (!trimmed) { alert('Please enter a valid name.'); return; }
+
+    try{
+      let didUpdate = false;
+      if (currentDocId){
+        try{
+          const exists = await getDoc(doc(db, COLL, currentDocId));
+          if (exists.exists()){
+            await updateDoc(doc(db, COLL, currentDocId), {
+              name: trimmed, text, updatedAt: serverTimestamp()
+            });
+            didUpdate = true;
+          }
+        }catch(e){
+          console.warn('Update path failed; will create new.', e);
+        }
+      }
+      if (!didUpdate){
+        const ref = await addDoc(collection(db, COLL), {
+          name: trimmed, text, createdAt: serverTimestamp(), updatedAt: serverTimestamp()
+        });
+        currentDocId = ref.id; currentName = trimmed;
+        setStatus?.(`Saved “${trimmed}”.`);
+        try{ localStorage.setItem('tp_doc_meta', JSON.stringify({id: currentDocId, name: currentName})); }catch{}
+      } else {
+        currentName = trimmed;
+        setStatus?.(`Updated “${trimmed}”.`);
+      }
+      try{ localStorage.setItem('tp_text', text); }catch{}
+    }catch(err){
+      console.error(err);
+      alert('Save failed. See console for details.');
+    }
+  }
+
+  async function showList(){
+    dlg?.showModal();
+    if (listEl) listEl.innerHTML = '<div class="muted">Loading…</div>';
+    try{
+      const qRef = query(collection(db, COLL), orderBy('updatedAt','desc'));
+      const snap = await getDocs(qRef);
+      if (!listEl) return;
+      if (snap.empty){
+        listEl.innerHTML = '<div class="muted">No saved scripts yet.</div>';
+        return;
+      }
+      listEl.innerHTML = '';
+      snap.forEach(docSnap=>{
+        const d = docSnap.data();
+        const when = d.updatedAt?.toDate ? d.updatedAt.toDate().toLocaleString() : '';
+        const row = document.createElement('div');
+        row.className = 'saved-item';
+        row.innerHTML = `
+          <div>
+            <div class="saved-title">${d.name || '(untitled)'}</div>
+            <div class="saved-meta">${when}</div>
+          </div>
+          <div class="saved-actions">
+            <button data-id="${docSnap.id}" class="load">Load</button>
+            <button data-id="${docSnap.id}" class="rename">Rename</button>
+            <button data-id="${docSnap.id}" class="duplicate">Duplicate</button>
+            <button data-id="${docSnap.id}" class="delete">Delete</button>
+          </div>
+        `;
+        listEl.appendChild(row);
+      });
+    }catch(err){
+      console.error(err);
+      if (listEl) listEl.innerHTML = '<div class="muted">Failed to load list.</div>';
+    }
+  }
+
+  // LOAD / RENAME / DUPLICATE / DELETE
+  listEl?.addEventListener('click', async (e)=>{
+    const id = e.target?.dataset?.id;
+    if(!id) return;
+
+    if(e.target.classList.contains('load')){
+      try{
+        const ds = await getDoc(doc(db, COLL, id));
+        if (ds.exists()){
+          const data = ds.data();
+          const sb = document.getElementById('script');
+          if (sb) sb.value = data.text || '';
+          currentDocId = id; currentName = data.name || '';
+          applyBtn?.click();
+          setStatus?.(`Loaded “${currentName || '(untitled)'}”.`);
+          try{ localStorage.setItem('tp_doc_meta', JSON.stringify({id: currentDocId, name: currentName})); }catch{}
+          dlg?.close();
+        }
+      }catch(err){ console.error(err); alert('Load failed.'); }
+    }
+
+    if(e.target.classList.contains('rename')){
+      const ds = await getDoc(doc(db, COLL, id));
+      if (!ds.exists()) return;
+      const oldName = ds.data().name || '';
+      const newName = prompt('Rename script to:', oldName);
+      if (newName === null) return;
+      const trimmed = (newName || '').trim();
+      if (!trimmed) return alert('Please enter a valid name.');
+      try{
+        await updateDoc(doc(db, COLL, id), { name: trimmed, updatedAt: serverTimestamp() });
+        if (currentDocId === id) { currentName = trimmed; try{ localStorage.setItem('tp_doc_meta', JSON.stringify({id: currentDocId, name: currentName})); }catch{} }
+        showList();
+      }catch(err){ console.error(err); alert('Rename failed.'); }
+    }
+
+    if(e.target.classList.contains('duplicate')){
+      const ds = await getDoc(doc(db, COLL, id));
+      if (!ds.exists()) return;
+      const d = ds.data();
+      const dupName = `${d.name || 'Copy'} (copy)`;
+      try{
+        await addDoc(collection(db, COLL), {
+          name: dupName, text: d.text || '',
+          createdAt: serverTimestamp(), updatedAt: serverTimestamp()
+        });
+        setStatus?.(`Duplicated as “${dupName}”.`);
+        showList();
+      }catch(err){ console.error(err); alert('Duplicate failed.'); }
+    }
+
+    if(e.target.classList.contains('delete')){
+      if(!confirm('Delete this saved script?')) return;
+      try{
+        await deleteDoc(doc(db, COLL, id));
+        const meta = localStorage.getItem('tp_doc_meta');
+        if (meta){
+          const m = JSON.parse(meta);
+          if (m.id === id){ localStorage.removeItem('tp_doc_meta'); }
+        }
+        showList();
+      }catch(err){ console.error(err); alert('Delete failed.'); }
+    }
+  });
+
+  saveBtn?.addEventListener('click', doSave);
+  loadBtn?.addEventListener('click', showList);
+  closeDlg?.addEventListener('click', ()=>dlg?.close());
+</script>
+
+<!--
+FIRESTORE RULES for PUBLIC mode (paste in Console → Firestore → Rules):
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /publicScripts/{docId} {
+      allow read, list, get: if true;
+      allow create, update, delete: if true;
+    }
+  }
+}
+-->
+</body>
+</html>
